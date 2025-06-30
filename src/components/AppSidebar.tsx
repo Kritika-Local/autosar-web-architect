@@ -37,8 +37,10 @@ const toolsItems = [
 ];
 
 export function AppSidebar() {
-  const { collapsed } = useSidebar();
+  const { state } = useSidebar();
   const location = useLocation();
+  
+  const isCollapsed = state === "collapsed";
   
   const isActive = (path: string) => {
     if (path === "/") return location.pathname === "/";
@@ -53,11 +55,11 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar className={collapsed ? "w-16" : "w-64"} collapsible>
+    <Sidebar className={isCollapsed ? "w-16" : "w-64"} collapsible="icon">
       <SidebarContent className="bg-sidebar">
         <SidebarGroup>
           <SidebarGroupLabel className="text-sidebar-foreground/70 font-medium">
-            {!collapsed && "Navigation"}
+            {!isCollapsed && "Navigation"}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -65,8 +67,8 @@ export function AppSidebar() {
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <NavLink to={item.url} className={getNavClass(item.url)}>
-                      <item.icon className={`h-5 w-5 ${!collapsed ? 'mr-3' : ''}`} />
-                      {!collapsed && <span>{item.title}</span>}
+                      <item.icon className={`h-5 w-5 ${!isCollapsed ? 'mr-3' : ''}`} />
+                      {!isCollapsed && <span>{item.title}</span>}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -77,7 +79,7 @@ export function AppSidebar() {
 
         <SidebarGroup>
           <SidebarGroupLabel className="text-sidebar-foreground/70 font-medium">
-            {!collapsed && "Tools"}
+            {!isCollapsed && "Tools"}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -85,8 +87,8 @@ export function AppSidebar() {
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <NavLink to={item.url} className={getNavClass(item.url)}>
-                      <item.icon className={`h-5 w-5 ${!collapsed ? 'mr-3' : ''}`} />
-                      {!collapsed && <span>{item.title}</span>}
+                      <item.icon className={`h-5 w-5 ${!isCollapsed ? 'mr-3' : ''}`} />
+                      {!isCollapsed && <span>{item.title}</span>}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
