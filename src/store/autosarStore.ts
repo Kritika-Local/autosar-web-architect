@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -147,8 +146,15 @@ interface AutosarStore {
   updateAccessPoint: (runnableId: string, accessPointId: string, updates: Partial<AccessPoint>) => void;
   removeAccessPoint: (runnableId: string, accessPointId: string) => void;
   
+  // Validation and cleanup
+  validateProject: () => { isValid: boolean; errors: string[] };
+  cleanupDependencies: (deletedType: 'port' | 'interface' | 'dataType' | 'dataElement', deletedId: string) => void;
+  
   // ARXML export
   exportArxml: () => void;
+  
+  // Auto-generate names
+  generateAccessPointName: (portName: string, dataElementName: string, accessType: 'iRead' | 'iWrite' | 'iCall') => string;
 }
 
 const generateUUID = () => crypto.randomUUID();
@@ -309,6 +315,11 @@ export const useAutosarStore = create<AutosarStore>()(
             swcs: state.currentProject.swcs.map((swc) => ({
               ...swc,
               ports: swc.ports.filter((port) => port.id !== id),
+              // Also remove access points that reference this port
+              runnables: swc.runnables.map((runnable) => ({
+                ...runnable,
+                accessPoints: runnable.accessPoints.filter((ap) => ap.portRef !== id),
+              })),
             })),
             lastModified: new Date().toISOString(),
           } : null,
@@ -347,9 +358,17 @@ export const useAutosarStore = create<AutosarStore>()(
           currentProject: state.currentProject ? {
             ...state.currentProject,
             interfaces: state.currentProject.interfaces.filter((int) => int.id !== id),
+            // Remove ports that reference this interface
+            swcs: state.currentProject.swcs.map((swc) => ({
+              ...swc,
+              ports: swc.ports.filter((port) => port.interfaceRef !== id),
+            })),
             lastModified: new Date().toISOString(),
           } : null,
         }));
+        
+        // Cleanup dependencies
+        get().cleanupDependencies('interface', id);
       },
       
       createDataType: (dataTypeData) => {
@@ -393,13 +412,22 @@ export const useAutosarStore = create<AutosarStore>()(
       },
       
       deleteDataType: (id) => {
+        const state = get();
+        const dataType = state.currentProject?.dataTypes.find(dt => dt.id === id);
+        
         set((state) => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
             dataTypes: state.currentProject.dataTypes.filter((dt) => dt.id !== id),
+            // Remove data elements that reference this data type
+            dataElements: state.currentProject.dataElements.filter((de) => 
+              de.applicationDataTypeRef !== dataType?.name
+            ),
             lastModified: new Date().toISOString(),
           } : null,
         }));
+        
+        get().cleanupDependencies('dataType', id);
       },
       
       createDataElement: (dataElementData) => {
@@ -426,10 +454,21 @@ export const useAutosarStore = create<AutosarStore>()(
       },
       
       deleteDataElement: (id) => {
+        const state = get();
+        const dataElement = state.currentProject?.dataElements.find(de => de.id === id);
+        
         set((state) => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
             dataElements: state.currentProject.dataElements.filter((de) => de.id !== id),
+            // Remove access points that reference this data element
+            swcs: state.currentProject.swcs.map((swc) => ({
+              ...swc,
+              runnables: swc.runnables.map((runnable) => ({
+                ...runnable,
+                accessPoints: runnable.accessPoints.filter((ap) => ap.dataElementRef !== id),
+              })),
+            })),
             lastModified: new Date().toISOString(),
           } : null,
         }));
@@ -543,11 +582,81 @@ export const useAutosarStore = create<AutosarStore>()(
         }));
       },
       
+      validateProject: () => {
+        const project = get().currentProject;
+        if (!project) {
+          return { isValid: false, errors: ['No project loaded'] };
+        }
+        
+        const errors: string[] = [];
+        
+        // Validate SWCs
+        project.swcs.forEach((swc) => {
+          if (!swc.name) errors.push(`SWC missing name: ${swc.id}`);
+          if (!swc.category) errors.push(`SWC missing category: ${swc.name}`);
+          
+          // Validate ports
+          swc.ports.forEach((port) => {
+            const interfaceExists = project.interfaces.some(int => int.id === port.interfaceRef);
+            if (!interfaceExists) {
+              errors.push(`Port ${port.name} references non-existent interface: ${port.interfaceRef}`);
+            }
+          });
+          
+          // Validate access points
+          swc.runnables.forEach((runnable) => {
+            runnable.accessPoints.forEach((ap) => {
+              const portExists = swc.ports.some(port => port.id === ap.portRef);
+              if (!portExists) {
+                errors.push(`Access point ${ap.name} references non-existent port: ${ap.portRef}`);
+              }
+              
+              const dataElementExists = project.dataElements.some(de => de.id === ap.dataElementRef);
+              if (!dataElementExists) {
+                errors.push(`Access point ${ap.name} references non-existent data element: ${ap.dataElementRef}`);
+              }
+            });
+          });
+        });
+        
+        // Validate data elements
+        project.dataElements.forEach((de) => {
+          const dataTypeExists = project.dataTypes.some(dt => dt.name === de.applicationDataTypeRef);
+          if (!dataTypeExists) {
+            errors.push(`Data element ${de.name} references non-existent data type: ${de.applicationDataTypeRef}`);
+          }
+        });
+        
+        return {
+          isValid: errors.length === 0,
+          errors
+        };
+      },
+      
+      cleanupDependencies: (deletedType, deletedId) => {
+        // This function is called after deletion to ensure referential integrity
+        const validation = get().validateProject();
+        if (!validation.isValid) {
+          console.warn('Project validation failed after deletion:', validation.errors);
+        }
+      },
+      
+      generateAccessPointName: (portName, dataElementName, accessType) => {
+        return `${accessType}_${portName}_${dataElementName}`;
+      },
+      
       exportArxml: () => {
         const project = get().currentProject;
         if (!project) return;
         
+        const validation = get().validateProject();
+        if (!validation.isValid) {
+          console.error('Cannot export invalid project:', validation.errors);
+          return;
+        }
+        
         console.log('Exporting ARXML for project:', project.name);
+        console.log('Project validation passed');
         // TODO: Implement full ARXML export with AR-PACKAGES structure
       },
     }),

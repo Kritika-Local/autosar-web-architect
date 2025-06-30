@@ -8,9 +8,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/components/ui/use-toast";
-import { Database, Plus, Edit, Trash2, Hash } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { Database, Plus, Edit, Trash2, Hash, Wand2 } from "lucide-react";
 import { useAutosarStore, DataElement } from "@/store/autosarStore";
+import DeleteConfirmDialog from "@/components/DeleteConfirmDialog";
+import DataTypeWizard from "@/components/DataTypeWizard";
 
 const DataElementEditor = () => {
   const { toast } = useToast();
@@ -18,11 +20,17 @@ const DataElementEditor = () => {
     currentProject, 
     createDataElement, 
     updateDataElement, 
-    deleteDataElement 
+    deleteDataElement,
+    createDataType
   } = useAutosarStore();
   
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [editingDataElement, setEditingDataElement] = useState<DataElement | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean;
+    element: DataElement | null;
+  }>({ open: false, element: null });
   
   // Form states
   const [name, setName] = useState("");
@@ -95,11 +103,44 @@ const DataElementEditor = () => {
     setIsCreateDialogOpen(true);
   };
 
-  const handleDeleteDataElement = (id: string) => {
-    deleteDataElement(id);
+  const handleDeleteDataElement = (dataElement: DataElement) => {
+    setDeleteDialog({ open: true, element: dataElement });
+  };
+
+  const confirmDelete = () => {
+    if (deleteDialog.element) {
+      deleteDataElement(deleteDialog.element.id);
+      toast({
+        title: "Data Element Deleted",
+        description: `${deleteDialog.element.name} has been deleted`,
+      });
+    }
+    setDeleteDialog({ open: false, element: null });
+  };
+
+  const handleWizardComplete = (wizardData: any) => {
+    // Create data type if new one was specified
+    if (wizardData.dataType) {
+      createDataType(wizardData.dataType);
+    }
+
+    // Create data element
+    const dataElementData: Omit<DataElement, 'id'> = {
+      name: wizardData.dataElement.name,
+      description: wizardData.dataElement.description,
+      category: wizardData.dataElement.category,
+      applicationDataTypeRef: wizardData.dataElement.applicationDataTypeRef,
+      swDataDefProps: {
+        baseTypeRef: wizardData.dataElement.applicationDataTypeRef,
+        implementationDataTypeRef: `${wizardData.dataElement.applicationDataTypeRef}_Impl`
+      }
+    };
+
+    createDataElement(dataElementData);
+
     toast({
-      title: "Data Element Deleted",
-      description: "Data element has been deleted",
+      title: "Data Element Created",
+      description: `${wizardData.dataElement.name} has been created with structured data type`,
     });
   };
 
@@ -129,83 +170,93 @@ const DataElementEditor = () => {
             Define data elements for use in port interfaces
           </p>
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
-          setIsCreateDialogOpen(open);
-          if (!open) resetForm();
-        }}>
-          <DialogTrigger asChild>
-            <Button className="autosar-button flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              Add Data Element
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>
-                {editingDataElement ? "Edit Data Element" : "Create Data Element"}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+        <div className="flex gap-2">
+          <Button 
+            variant="outline"
+            onClick={() => setIsWizardOpen(true)}
+            className="flex items-center gap-2"
+          >
+            <Wand2 className="h-4 w-4" />
+            Wizard
+          </Button>
+          <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
+            setIsCreateDialogOpen(open);
+            if (!open) resetForm();
+          }}>
+            <DialogTrigger asChild>
+              <Button className="autosar-button flex items-center gap-2">
+                <Plus className="h-4 w-4" />
+                Add Data Element
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>
+                  {editingDataElement ? "Edit Data Element" : "Create Data Element"}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="de-name">Name *</Label>
+                    <Input
+                      id="de-name"
+                      placeholder="e.g., EngineSpeed"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="de-category">Category</Label>
+                    <Input
+                      id="de-category"
+                      placeholder="e.g., VALUE"
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                    />
+                  </div>
+                </div>
+
                 <div>
-                  <Label htmlFor="de-name">Name *</Label>
-                  <Input
-                    id="de-name"
-                    placeholder="e.g., EngineSpeed"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
+                  <Label htmlFor="de-description">Description</Label>
+                  <Textarea
+                    id="de-description"
+                    placeholder="Description of the data element"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={2}
                   />
                 </div>
+
                 <div>
-                  <Label htmlFor="de-category">Category</Label>
-                  <Input
-                    id="de-category"
-                    placeholder="e.g., VALUE"
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                  />
+                  <Label htmlFor="de-app-data-type">Application Data Type *</Label>
+                  <Select value={applicationDataTypeRef} onValueChange={setApplicationDataTypeRef}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select application data type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {currentProject.dataTypes.map((dt) => (
+                        <SelectItem key={dt.id} value={dt.name}>{dt.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button variant="outline" onClick={() => {
+                    setIsCreateDialogOpen(false);
+                    resetForm();
+                  }}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleCreateDataElement} className="autosar-button">
+                    {editingDataElement ? "Update" : "Create"} Data Element
+                  </Button>
                 </div>
               </div>
-
-              <div>
-                <Label htmlFor="de-description">Description</Label>
-                <Textarea
-                  id="de-description"
-                  placeholder="Description of the data element"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={2}
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="de-app-data-type">Application Data Type *</Label>
-                <Select value={applicationDataTypeRef} onValueChange={setApplicationDataTypeRef}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select application data type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {currentProject.dataTypes.map((dt) => (
-                      <SelectItem key={dt.id} value={dt.name}>{dt.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-4">
-                <Button variant="outline" onClick={() => {
-                  setIsCreateDialogOpen(false);
-                  resetForm();
-                }}>
-                  Cancel
-                </Button>
-                <Button onClick={handleCreateDataElement} className="autosar-button">
-                  {editingDataElement ? "Update" : "Create"} Data Element
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Data Elements Grid */}
@@ -236,7 +287,7 @@ const DataElementEditor = () => {
                   <Button 
                     variant="ghost" 
                     size="sm"
-                    onClick={() => handleDeleteDataElement(dataElement.id)}
+                    onClick={() => handleDeleteDataElement(dataElement)}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -280,13 +331,37 @@ const DataElementEditor = () => {
             <div className="text-center py-12 text-muted-foreground">
               <Hash className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>No data elements defined yet</p>
-              <Button variant="outline" className="mt-4" onClick={() => setIsCreateDialogOpen(true)}>
-                Create Data Element
-              </Button>
+              <div className="flex gap-2 justify-center mt-4">
+                <Button variant="outline" onClick={() => setIsCreateDialogOpen(true)}>
+                  Create Data Element
+                </Button>
+                <Button variant="outline" onClick={() => setIsWizardOpen(true)}>
+                  <Wand2 className="h-4 w-4 mr-2" />
+                  Use Wizard
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => setDeleteDialog({ open, element: null })}
+        title="Delete Data Element"
+        description="Are you sure you want to delete this data element? This action cannot be undone and may affect other components that reference it."
+        itemName={deleteDialog.element?.name || ""}
+        onConfirm={confirmDelete}
+      />
+
+      {/* Data Type Wizard */}
+      <DataTypeWizard
+        open={isWizardOpen}
+        onOpenChange={setIsWizardOpen}
+        onComplete={handleWizardComplete}
+        existingDataTypes={currentProject.dataTypes}
+      />
     </div>
   );
 };
