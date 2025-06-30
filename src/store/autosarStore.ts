@@ -1196,16 +1196,16 @@ export const useAutosarStore = create<AutosarStore>()(
     }),
     {
       name: 'autosar-storage',
-      // Enhanced persistence configuration
+      // Fixed persistence configuration with proper types
       storage: {
-        getItem: (name) => {
-          const value = loadFromLocalStorage(name);
-          return value ? JSON.stringify(value) : null;
+        getItem: (name: string) => {
+          const value = localStorage.getItem(name);
+          return value;
         },
-        setItem: (name, value) => {
-          saveToLocalStorage(name, JSON.parse(value));
+        setItem: (name: string, value: string) => {
+          localStorage.setItem(name, value);
         },
-        removeItem: (name) => {
+        removeItem: (name: string) => {
           localStorage.removeItem(name);
         },
       },
