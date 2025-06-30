@@ -69,6 +69,7 @@ const ProjectManager = () => {
       interfaces: [],
       dataTypes: [],
       dataElements: [],
+      connections: [],
     });
 
     toast({

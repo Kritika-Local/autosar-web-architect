@@ -101,6 +101,8 @@ const BehaviorDesigner = () => {
       name: accessPointName,
       type: accessPointType,
       access: accessType,
+      swcId: selectedRunnable.swcId,
+      runnableId: selectedRunnable.id,
       portRef: selectedPort,
       dataElementRef: selectedDataElement,
     });
@@ -477,7 +479,7 @@ const BehaviorDesigner = () => {
                                   <div>
                                     <p className="text-sm font-medium">{ap.name}</p>
                                     <p className="text-xs text-muted-foreground">
-                                      {ap.type} • {ap.access} • {ap.dataElementRef}
+                                      {ap.type} • {ap.access} • {ap.dataElementRef || 'N/A'}
                                     </p>
                                   </div>
                                 </div>

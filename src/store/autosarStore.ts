@@ -68,6 +68,8 @@ export interface AccessPoint {
   access: 'implicit' | 'explicit';
   swcId: string;
   runnableId: string;
+  portRef?: string;
+  dataElementRef?: string;
 }
 
 export interface Runnable {
@@ -153,9 +155,9 @@ interface AutosarStore {
   deleteRunnable: (id: string) => void;
   
   // Access point management
-  addAccessPoint: (accessPoint: Omit<AccessPoint, 'id'>) => void;
+  addAccessPoint: (runnableId: string, accessPoint: Omit<AccessPoint, 'id'>) => void;
   updateAccessPoint: (accessPointId: string, updates: Partial<AccessPoint>) => void;
-  removeAccessPoint: (accessPointId: string) => void;
+  removeAccessPoint: (runnableId: string, accessPointId: string) => void;
   
   // SWC Connection management
   createConnection: (connection: Omit<SWCConnection, 'id'>) => void;
@@ -170,6 +172,11 @@ interface AutosarStore {
   exportArxml: () => void;
   exportMultipleArxml: () => void;
   downloadArxmlFiles: (files: { name: string; content: string }[]) => void;
+  generateConsolidatedArxml: (project: Project) => string;
+  generateSWCArxml: (swc: SWC, project: Project) => string;
+  generateDataTypesArxml: (project: Project) => string;
+  generatePortInterfacesArxml: (project: Project) => string;
+  generateTopologyArxml: (project: Project) => string;
   
   // Auto-generate names
   generateAccessPointName: (swcName: string, runnableName: string, accessType: 'iRead' | 'iWrite' | 'iCall') => string;
@@ -194,8 +201,6 @@ export const useAutosarStore = create<AutosarStore>()(
           lastModified: new Date().toISOString(),
           isDraft: false,
           autoSaveEnabled: true,
-          dataElements: projectData.dataElements || [],
-          connections: projectData.connections || [],
         };
         set((state) => ({
           projects: [...state.projects, newProject],
@@ -277,7 +282,6 @@ export const useAutosarStore = create<AutosarStore>()(
         // TODO: Implement ARXML parsing
       },
       
-      // SWC management
       createSWC: (swcData) => {
         const swc: SWC = {
           ...swcData,
@@ -318,7 +322,6 @@ export const useAutosarStore = create<AutosarStore>()(
         }));
       },
       
-      // Port management
       createPort: (portData) => {
         const port: Port = { ...portData, id: generateUUID() };
         set((state) => ({
@@ -354,17 +357,14 @@ export const useAutosarStore = create<AutosarStore>()(
             swcs: state.currentProject.swcs.map((swc) => ({
               ...swc,
               ports: swc.ports.filter((port) => port.id !== id),
-              // Also remove access points that reference this port
               runnables: swc.runnables.map((runnable) => ({
                 ...runnable,
                 accessPoints: runnable.accessPoints.filter((ap) => {
-                  // Find the port that matches this access point's SWC
-                  const portExists = swc.ports.some(port => port.id !== id);
-                  return portExists;
+                  // Remove access points referencing the deleted port
+                  return ap.portRef !== id;
                 }),
               })),
             })),
-            // Remove connections that reference this port
             connections: state.currentProject.connections.filter((conn) => 
               conn.sourcePortId !== id && conn.targetPortId !== id
             ),
@@ -373,7 +373,6 @@ export const useAutosarStore = create<AutosarStore>()(
         }));
       },
       
-      // Interface management
       createInterface: (interfaceData) => {
         const interface_: Interface = { 
           ...interfaceData, 
@@ -406,7 +405,6 @@ export const useAutosarStore = create<AutosarStore>()(
           currentProject: state.currentProject ? {
             ...state.currentProject,
             interfaces: state.currentProject.interfaces.filter((int) => int.id !== id),
-            // Remove ports that reference this interface
             swcs: state.currentProject.swcs.map((swc) => ({
               ...swc,
               ports: swc.ports.filter((port) => port.interfaceRef !== id),
@@ -415,16 +413,13 @@ export const useAutosarStore = create<AutosarStore>()(
           } : null,
         }));
         
-        // Cleanup dependencies
         get().cleanupDependencies('interface', id);
       },
       
-      // Data type management
       createDataType: (dataTypeData) => {
         const dataType: DataType = { 
           ...dataTypeData, 
           id: generateUUID(),
-          // Generate AUTOSAR-compliant application and implementation data types
           applicationDataType: {
             category: dataTypeData.category === 'primitive' ? 'PRIMITIVE' : 
                      dataTypeData.category === 'array' ? 'ARRAY' : 'RECORD',
@@ -468,7 +463,6 @@ export const useAutosarStore = create<AutosarStore>()(
           currentProject: state.currentProject ? {
             ...state.currentProject,
             dataTypes: state.currentProject.dataTypes.filter((dt) => dt.id !== id),
-            // Remove data elements that reference this data type
             dataElements: state.currentProject.dataElements.filter((de) => 
               de.applicationDataTypeRef !== dataType?.name
             ),
@@ -479,7 +473,6 @@ export const useAutosarStore = create<AutosarStore>()(
         get().cleanupDependencies('dataType', id);
       },
       
-      // Data element management
       createDataElement: (dataElementData) => {
         const dataElement: DataElement = { ...dataElementData, id: generateUUID() };
         set((state) => ({
@@ -513,7 +506,6 @@ export const useAutosarStore = create<AutosarStore>()(
         }));
       },
       
-      // Runnable management
       createRunnable: (runnableData) => {
         const runnable: Runnable = { 
           ...runnableData, 
@@ -562,8 +554,7 @@ export const useAutosarStore = create<AutosarStore>()(
         }));
       },
       
-      // Updated Access Point management
-      addAccessPoint: (accessPointData) => {
+      addAccessPoint: (runnableId: string, accessPointData: Omit<AccessPoint, 'id'>) => {
         const accessPoint: AccessPoint = { ...accessPointData, id: generateUUID() };
         set((state) => ({
           currentProject: state.currentProject ? {
@@ -571,7 +562,7 @@ export const useAutosarStore = create<AutosarStore>()(
             swcs: state.currentProject.swcs.map((swc) => ({
               ...swc,
               runnables: swc.runnables.map((runnable) =>
-                runnable.id === accessPoint.runnableId
+                runnable.id === runnableId
                   ? { ...runnable, accessPoints: [...runnable.accessPoints, accessPoint] }
                   : runnable
               ),
@@ -599,7 +590,7 @@ export const useAutosarStore = create<AutosarStore>()(
         }));
       },
       
-      removeAccessPoint: (accessPointId) => {
+      removeAccessPoint: (runnableId: string, accessPointId: string) => {
         set((state) => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
@@ -615,7 +606,6 @@ export const useAutosarStore = create<AutosarStore>()(
         }));
       },
       
-      // SWC Connection management
       createConnection: (connectionData) => {
         const connection: SWCConnection = { ...connectionData, id: generateUUID() };
         set((state) => ({
@@ -657,12 +647,10 @@ export const useAutosarStore = create<AutosarStore>()(
         
         const errors: string[] = [];
         
-        // Validate SWCs
         project.swcs.forEach((swc) => {
           if (!swc.name) errors.push(`SWC missing name: ${swc.id}`);
           if (!swc.category) errors.push(`SWC missing category: ${swc.name}`);
           
-          // Validate ports
           swc.ports.forEach((port) => {
             const interfaceExists = project.interfaces.some(int => int.id === port.interfaceRef);
             if (!interfaceExists) {
@@ -670,7 +658,6 @@ export const useAutosarStore = create<AutosarStore>()(
             }
           });
           
-          // Validate access points
           swc.runnables.forEach((runnable) => {
             runnable.accessPoints.forEach((ap) => {
               const swcExists = project.swcs.some(s => s.id === ap.swcId);
@@ -688,7 +675,6 @@ export const useAutosarStore = create<AutosarStore>()(
           });
         });
         
-        // Validate data elements
         project.dataElements.forEach((de) => {
           const dataTypeExists = project.dataTypes.some(dt => dt.name === de.applicationDataTypeRef);
           if (!dataTypeExists) {
@@ -696,7 +682,6 @@ export const useAutosarStore = create<AutosarStore>()(
           }
         });
         
-        // Validate connections
         project.connections.forEach((conn) => {
           const sourceSwcExists = project.swcs.some(swc => swc.id === conn.sourceSwcId);
           const targetSwcExists = project.swcs.some(swc => swc.id === conn.targetSwcId);
@@ -730,7 +715,6 @@ export const useAutosarStore = create<AutosarStore>()(
       },
       
       cleanupDependencies: (deletedType, deletedId) => {
-        // This function is called after deletion to ensure referential integrity
         const validation = get().validateProject();
         if (!validation.isValid) {
           console.warn('Project validation failed after deletion:', validation.errors);
@@ -754,7 +738,6 @@ export const useAutosarStore = create<AutosarStore>()(
         console.log('Exporting single ARXML for project:', project.name);
         console.log('Project validation passed');
         
-        // Generate single consolidated ARXML
         const arxmlContent = get().generateConsolidatedArxml(project);
         get().downloadArxmlFiles([
           { name: `${project.name}_consolidated.arxml`, content: arxmlContent }
@@ -775,13 +758,11 @@ export const useAutosarStore = create<AutosarStore>()(
         
         const files: { name: string; content: string }[] = [];
         
-        // Generate individual SWC files
         project.swcs.forEach((swc) => {
           const content = get().generateSWCArxml(swc, project);
           files.push({ name: `${swc.name}_swc.arxml`, content });
         });
         
-        // Generate shared files
         files.push({ name: 'DataTypes.arxml', content: get().generateDataTypesArxml(project) });
         files.push({ name: 'PortInterfaces.arxml', content: get().generatePortInterfacesArxml(project) });
         files.push({ name: 'Topology.arxml', content: get().generateTopologyArxml(project) });
@@ -803,7 +784,6 @@ export const useAutosarStore = create<AutosarStore>()(
         });
       },
       
-      // Helper functions for ARXML generation
       generateConsolidatedArxml: (project: Project) => {
         return `<?xml version="1.0" encoding="UTF-8"?>
 <AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
