@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,83 +27,6 @@ import {
 import { useAutosarStore } from "@/store/autosarStore";
 import DeleteConfirmDialog from "@/components/DeleteConfirmDialog";
 import EditAccessPointDialog from "@/components/EditAccessPointDialog";
-import CreateAccessPointDialog from "@/components/CreateAccessPointDialog";
-
-const BehaviorDesigner = () => {
-  const { toast } = useToast();
-  const { currentProject, updateSWC, deleteRunnable, updateRunnable, deleteAccessPoint } = useAutosarStore();
-  
-  const [selectedSWC, setSelectedSWC] = useState<any>(null);
-  const [selectedRunnable, setSelectedRunnable] = useState<any>(null);
-  const [editAccessPointDialogOpen, setEditAccessPointDialogOpen] = useState(false);
-  const [accessPointToEdit, setAccessPointToEdit] = useState<any>(null);
-  const [deleteAccessPointDialogOpen, setDeleteAccessPointDialogOpen] = useState(false);
-  const [accessPointToDelete, setAccessPointToDelete] = useState<string | null>(null);
-  const [accessPointToDeleteName, setAccessPointToDeleteName] = useState<string | null>(null);
-  const [deleteRunnableDialogOpen, setDeleteRunnableDialogOpen] = useState(false);
-  const [runnableToDelete, setRunnableToDelete] = useState<string | null>(null);
-  const [runnableToDeleteName, setRunnableToDeleteName] = useState<string | null>(null);
-
-  const openEditAccessPointDialog = (accessPoint: any) => {
-    setAccessPointToEdit(accessPoint);
-    setEditAccessPointDialogOpen(true);
-  };
-
-  const openDeleteAccessPointDialog = (accessPointId: string, accessPointName: string) => {
-    setAccessPointToDelete(accessPointId);
-    setAccessPointToDeleteName(accessPointName);
-    setDeleteAccessPointDialogOpen(true);
-  };
-
-  const handleDeleteAccessPoint = (accessPointId: string) => {
-    if (selectedRunnable) {
-      deleteAccessPoint(selectedRunnable.id, accessPointId);
-      toast({
-        title: "Access Point Deleted",
-        description: "Access point has been deleted successfully",
-      });
-      setDeleteAccessPointDialogOpen(false);
-      setAccessPointToDelete(null);
-      setAccessPointToDeleteName(null);
-    }
-  };
-
-  const openDeleteRunnableDialog = (runnableId: string, runnableName: string) => {
-    setRunnableToDelete(runnableId);
-    setRunnableToDeleteName(runnableName);
-    setDeleteRunnableDialogOpen(true);
-  };
-
-  const handleDeleteRunnable = (runnableId: string) => {
-    if (selectedSWC) {
-      deleteRunnable(runnableId);
-      toast({
-        title: "Runnable Deleted",
-        description: "Runnable has been deleted successfully",
-      });
-      setDeleteRunnableDialogOpen(false);
-      setRunnableToDelete(null);
-      setRunnableToDeleteName(null);
-      setSelectedRunnable(null);
-    }
-  };
-
-  const handleRunnableUpdate = (runnableId: string, updates: any) => {
-    updateRunnable(runnableId, updates);
-    toast({
-      title: "Runnable Updated",
-      description: "Runnable has been updated successfully",
-    });
-  };
-
-  if (!currentProject) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">No project loaded. Please create or load a project first.</p>
-      </div>
-    );
-  }
-
 import CreateAccessPointDialog from "@/components/CreateAccessPointDialog";
 
 const BehaviorDesigner = () => {
@@ -312,7 +236,7 @@ const BehaviorDesigner = () => {
                         variant="outline" 
                         size="sm"
                         onClick={(e) => {
-                          e.stopPropagation(); // Prevent selection
+                          e.stopPropagation();
                           const newCanBeInvokedConcurrently = !runnable.canBeInvokedConcurrently;
                           handleRunnableUpdate(runnable.id, { canBeInvokedConcurrently: newCanBeInvokedConcurrently });
                         }}
@@ -323,7 +247,7 @@ const BehaviorDesigner = () => {
                         variant="outline" 
                         size="sm"
                         onClick={(e) => {
-                          e.stopPropagation(); // Prevent selection
+                          e.stopPropagation();
                           openDeleteRunnableDialog(runnable.id, runnable.name);
                         }}
                       >
