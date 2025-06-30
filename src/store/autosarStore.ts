@@ -181,6 +181,7 @@ interface AutosarStore {
   generateConstantsArxml: (project: Project) => string;
   generatePackagesArxml: (project: Project) => string;
   generateConnectionsArxml: (project: Project) => string;
+  generateSystemExtractArxml: (project: Project) => string;
   
   // Auto-generate names
   generateAccessPointName: (swcName: string, runnableName: string, accessType: 'iRead' | 'iWrite' | 'iCall') => string;
@@ -190,6 +191,25 @@ const generateUUID = () => crypto.randomUUID();
 
 // Auto-save functionality
 let autoSaveInterval: NodeJS.Timeout | null = null;
+
+// Enhanced persistence helpers
+const saveToLocalStorage = (key: string, data: any) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (error) {
+    console.error('Failed to save to localStorage:', error);
+  }
+};
+
+const loadFromLocalStorage = (key: string) => {
+  try {
+    const data = localStorage.getItem(key);
+    return data ? JSON.parse(data) : null;
+  } catch (error) {
+    console.error('Failed to load from localStorage:', error);
+    return null;
+  }
+};
 
 export const useAutosarStore = create<AutosarStore>()(
   persist(
@@ -207,10 +227,16 @@ export const useAutosarStore = create<AutosarStore>()(
           isDraft: false,
           autoSaveEnabled: true,
         };
-        set((state) => ({
-          projects: [...state.projects, newProject],
-          currentProject: newProject,
-        }));
+        set((state) => {
+          const newState = {
+            projects: [...state.projects, newProject],
+            currentProject: newProject,
+          };
+          // Enhanced persistence
+          saveToLocalStorage('autosar-projects', newState.projects);
+          saveToLocalStorage('autosar-current-project', newProject);
+          return newState;
+        });
         
         // Start auto-save
         if (autoSaveInterval) clearInterval(autoSaveInterval);
@@ -220,14 +246,25 @@ export const useAutosarStore = create<AutosarStore>()(
       },
       
       updateProject: (id, updates) => {
-        set((state) => ({
-          projects: state.projects.map((p) =>
+        set((state) => {
+          const updatedProjects = state.projects.map((p) =>
             p.id === id ? { ...p, ...updates, lastModified: new Date().toISOString() } : p
-          ),
-          currentProject: state.currentProject?.id === id 
+          );
+          const updatedCurrentProject = state.currentProject?.id === id 
             ? { ...state.currentProject, ...updates, lastModified: new Date().toISOString() }
-            : state.currentProject,
-        }));
+            : state.currentProject;
+          
+          // Enhanced persistence
+          saveToLocalStorage('autosar-projects', updatedProjects);
+          if (updatedCurrentProject) {
+            saveToLocalStorage('autosar-current-project', updatedCurrentProject);
+          }
+          
+          return {
+            projects: updatedProjects,
+            currentProject: updatedCurrentProject,
+          };
+        });
       },
       
       deleteProject: (id) => {
@@ -673,8 +710,8 @@ export const useAutosarStore = create<AutosarStore>()(
           if (!swc.category) errors.push(`SWC missing category: ${swc.name}`);
           
           swc.ports.forEach((port) => {
-            const interfaceExists = project.interfaces.some(int => int.id === port.interfaceRef);
-            if (!interfaceExists) {
+            const interface_ = project.interfaces.find(i => i.id === port.interfaceRef);
+            if (!interface_) {
               errors.push(`Port ${port.name} references non-existent interface: ${port.interfaceRef}`);
             }
           });
@@ -791,6 +828,7 @@ export const useAutosarStore = create<AutosarStore>()(
         files.push({ name: 'Constants.arxml', content: get().generateConstantsArxml(project) });
         files.push({ name: 'Packages.arxml', content: get().generatePackagesArxml(project) });
         files.push({ name: 'Connections.arxml', content: get().generateConnectionsArxml(project) });
+        files.push({ name: 'SystemExtract.arxml', content: get().generateSystemExtractArxml(project) });
         
         get().downloadArxmlFiles(files);
       },
@@ -811,7 +849,7 @@ export const useAutosarStore = create<AutosarStore>()(
       
       generateConsolidatedArxml: (project: Project) => {
         return `<?xml version="1.0" encoding="UTF-8"?>
-<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_${project.autosarVersion.replace('.', '')}.xsd">
+<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 http://autosar.org/schema/r4.0/AUTOSAR_4-4-0.xsd">
   <AR-PACKAGES>
     <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>${project.name}</SHORT-NAME>
@@ -930,7 +968,7 @@ export const useAutosarStore = create<AutosarStore>()(
       
       generateSWCArxml: (swc: SWC, project: Project) => {
         return `<?xml version="1.0" encoding="UTF-8"?>
-<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_${project.autosarVersion.replace('.', '')}.xsd">
+<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 http://autosar.org/schema/r4.0/AUTOSAR_4-4-0.xsd">
   <AR-PACKAGES>
     <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>ComponentTypes</SHORT-NAME>
@@ -972,7 +1010,7 @@ export const useAutosarStore = create<AutosarStore>()(
       
       generateDataTypesArxml: (project: Project) => {
         return `<?xml version="1.0" encoding="UTF-8"?>
-<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_${project.autosarVersion.replace('.', '')}.xsd">
+<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 http://autosar.org/schema/r4.0/AUTOSAR_4-4-0.xsd">
   <AR-PACKAGES>
     <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>DataTypes</SHORT-NAME>
@@ -1002,7 +1040,7 @@ export const useAutosarStore = create<AutosarStore>()(
       
       generatePortInterfacesArxml: (project: Project) => {
         return `<?xml version="1.0" encoding="UTF-8"?>
-<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_${project.autosarVersion.replace('.', '')}.xsd">
+<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 http://autosar.org/schema/r4.0/AUTOSAR_4-4-0.xsd">
   <AR-PACKAGES>
     <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>PortInterfaces</SHORT-NAME>
@@ -1027,7 +1065,7 @@ export const useAutosarStore = create<AutosarStore>()(
       
       generateTopologyArxml: (project: Project) => {
         return `<?xml version="1.0" encoding="UTF-8"?>
-<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_${project.autosarVersion.replace('.', '')}.xsd">
+<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 http://autosar.org/schema/r4.0/AUTOSAR_4-4-0.xsd">
   <AR-PACKAGES>
     <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>Topology</SHORT-NAME>
@@ -1053,7 +1091,7 @@ export const useAutosarStore = create<AutosarStore>()(
       
       generateConstantsArxml: (project: Project) => {
         return `<?xml version="1.0" encoding="UTF-8"?>
-<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_${project.autosarVersion.replace('.', '')}.xsd">
+<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 http://autosar.org/schema/r4.0/AUTOSAR_4-4-0.xsd">
   <AR-PACKAGES>
     <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>Constants</SHORT-NAME>
@@ -1067,7 +1105,7 @@ export const useAutosarStore = create<AutosarStore>()(
       
       generatePackagesArxml: (project: Project) => {
         return `<?xml version="1.0" encoding="UTF-8"?>
-<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_${project.autosarVersion.replace('.', '')}.xsd">
+<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 http://autosar.org/schema/r4.0/AUTOSAR_4-4-0.xsd">
   <AR-PACKAGES>
     <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>${project.name}_Packages</SHORT-NAME>
@@ -1081,7 +1119,7 @@ export const useAutosarStore = create<AutosarStore>()(
       
       generateConnectionsArxml: (project: Project) => {
         return `<?xml version="1.0" encoding="UTF-8"?>
-<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_${project.autosarVersion.replace('.', '')}.xsd">
+<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 http://autosar.org/schema/r4.0/AUTOSAR_4-4-0.xsd">
   <AR-PACKAGES>
     <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>Connections</SHORT-NAME>
@@ -1103,9 +1141,74 @@ export const useAutosarStore = create<AutosarStore>()(
   </AR-PACKAGES>
 </AUTOSAR>`;
       },
+      
+      generateSystemExtractArxml: (project: Project) => {
+        return `<?xml version="1.0" encoding="UTF-8"?>
+<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 http://autosar.org/schema/r4.0/AUTOSAR_4-4-0.xsd">
+  <AR-PACKAGES>
+    <AR-PACKAGE UUID="${generateUUID()}">
+      <SHORT-NAME>SystemExtract</SHORT-NAME>
+      <ELEMENTS>
+        <SYSTEM UUID="${generateUUID()}">
+          <SHORT-NAME>${project.name}_System</SHORT-NAME>
+          <DESC>
+            <L-2 L="EN">Complete system model for ${project.name}</L-2>
+          </DESC>
+          <SW-COMPOSITIONS>
+            <COMPOSITION-SW-COMPONENT-TYPE UUID="${generateUUID()}">
+              <SHORT-NAME>${project.name}_Composition</SHORT-NAME>
+              <COMPONENTS>
+                ${project.swcs.map(swc => `
+                <SW-COMPONENT-PROTOTYPE UUID="${generateUUID()}">
+                  <SHORT-NAME>${swc.name}_Instance</SHORT-NAME>
+                  <TYPE-TREF DEST="APPLICATION-SW-COMPONENT-TYPE">/ComponentTypes/${swc.name}</TYPE-TREF>
+                </SW-COMPONENT-PROTOTYPE>`).join('')}
+              </COMPONENTS>
+              <CONNECTORS>
+                ${project.connections.map(conn => {
+                  const sourceSwc = project.swcs.find(s => s.id === conn.sourceSwcId);
+                  const targetSwc = project.swcs.find(s => s.id === conn.targetSwcId);
+                  const sourcePort = sourceSwc?.ports.find(p => p.id === conn.sourcePortId);
+                  const targetPort = targetSwc?.ports.find(p => p.id === conn.targetPortId);
+                  
+                  return `
+                <ASSEMBLY-SW-CONNECTOR UUID="${generateUUID()}">
+                  <SHORT-NAME>${conn.name}</SHORT-NAME>
+                  <PROVIDER-IREF>
+                    <CONTEXT-COMPONENT-REF DEST="SW-COMPONENT-PROTOTYPE">/${project.name}_Composition/${sourceSwc?.name}_Instance</CONTEXT-COMPONENT-REF>
+                    <TARGET-P-PORT-REF DEST="P-PORT-PROTOTYPE">/ComponentTypes/${sourceSwc?.name}/${sourcePort?.name}</TARGET-P-PORT-REF>
+                  </PROVIDER-IREF>
+                  <REQUESTER-IREF>
+                    <CONTEXT-COMPONENT-REF DEST="SW-COMPONENT-PROTOTYPE">/${project.name}_Composition/${targetSwc?.name}_Instance</CONTEXT-COMPONENT-REF>
+                    <TARGET-R-PORT-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/${targetSwc?.name}/${targetPort?.name}</TARGET-R-PORT-REF>
+                  </REQUESTER-IREF>
+                </ASSEMBLY-SW-CONNECTOR>`;
+                }).join('')}
+              </CONNECTORS>
+            </COMPOSITION-SW-COMPONENT-TYPE>
+          </SW-COMPOSITIONS>
+        </SYSTEM>
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+      },
     }),
     {
       name: 'autosar-storage',
+      // Enhanced persistence configuration
+      storage: {
+        getItem: (name) => {
+          const value = loadFromLocalStorage(name);
+          return value ? JSON.stringify(value) : null;
+        },
+        setItem: (name, value) => {
+          saveToLocalStorage(name, JSON.parse(value));
+        },
+        removeItem: (name) => {
+          localStorage.removeItem(name);
+        },
+      },
     }
   )
 );

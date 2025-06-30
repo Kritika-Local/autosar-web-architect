@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { Circle, Square, Plus, Folder, Database, Cable, Settings, Hash, BarChart3, FolderOpen } from "lucide-react";
+import { Circle, Square, Plus, Folder, Database, Cable, Settings, Hash, BarChart3, FolderOpen, Download } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAutosarStore } from "@/store/autosarStore";
 
@@ -33,7 +33,7 @@ const designItems = [
 export function AppSidebar() {
   const { state } = useSidebar();
   const location = useLocation();
-  const { projects } = useAutosarStore();
+  const { projects, exportMultipleArxml } = useAutosarStore();
   const currentPath = location.pathname;
   
   const [recentProjectsOpen, setRecentProjectsOpen] = useState(false);
@@ -44,6 +44,10 @@ export function AppSidebar() {
   
   const getNavCls = ({ isActive }: { isActive: boolean }) =>
     isActive ? "bg-muted text-primary font-medium" : "hover:bg-muted/50";
+
+  const handleExportArxml = () => {
+    exportMultipleArxml();
+  };
 
   return (
     <Sidebar
@@ -92,6 +96,21 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Export Section */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Export</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton onClick={handleExportArxml}>
+                  <Download className="mr-2 h-4 w-4" />
+                  {state !== "collapsed" && <span>Export ARXML</span>}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
