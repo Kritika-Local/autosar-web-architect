@@ -758,14 +758,18 @@ export const useAutosarStore = create<AutosarStore>()(
         
         const files: { name: string; content: string }[] = [];
         
+        // Generate individual SWC files
         project.swcs.forEach((swc) => {
           const content = get().generateSWCArxml(swc, project);
-          files.push({ name: `${swc.name}_swc.arxml`, content });
+          files.push({ name: `SWC_${swc.name}.arxml`, content });
         });
         
-        files.push({ name: 'DataTypes.arxml', content: get().generateDataTypesArxml(project) });
+        // Generate shared files
         files.push({ name: 'PortInterfaces.arxml', content: get().generatePortInterfacesArxml(project) });
-        files.push({ name: 'Topology.arxml', content: get().generateTopologyArxml(project) });
+        files.push({ name: 'DataTypes.arxml', content: get().generateDataTypesArxml(project) });
+        files.push({ name: 'Constants.arxml', content: get().generateConstantsArxml(project) });
+        files.push({ name: 'Packages.arxml', content: get().generatePackagesArxml(project) });
+        files.push({ name: 'Connections.arxml', content: get().generateConnectionsArxml(project) });
         
         get().downloadArxmlFiles(files);
       },
@@ -786,13 +790,118 @@ export const useAutosarStore = create<AutosarStore>()(
       
       generateConsolidatedArxml: (project: Project) => {
         return `<?xml version="1.0" encoding="UTF-8"?>
-<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_${project.autosarVersion.replace('.', '')}.xsd">
   <AR-PACKAGES>
-    <AR-PACKAGE>
+    <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>${project.name}</SHORT-NAME>
-      <ELEMENTS>
-        <!-- SWCs, Interfaces, DataTypes, and Connections would be generated here -->
-      </ELEMENTS>
+      <AR-PACKAGES>
+        <!-- SWC Components Package -->
+        <AR-PACKAGE UUID="${generateUUID()}">
+          <SHORT-NAME>ComponentTypes</SHORT-NAME>
+          <ELEMENTS>
+            ${project.swcs.map(swc => `
+            <APPLICATION-SW-COMPONENT-TYPE UUID="${swc.uuid}">
+              <SHORT-NAME>${swc.name}</SHORT-NAME>
+              <DESC>
+                <L-2 L="EN">${swc.description}</L-2>
+              </DESC>
+              <CATEGORY>APPLICATION</CATEGORY>
+              <PORTS>
+                ${swc.ports.map(port => {
+                  const interface_ = project.interfaces.find(i => i.id === port.interfaceRef);
+                  return `
+                <${port.direction === 'provided' ? 'P' : 'R'}-PORT-PROTOTYPE UUID="${generateUUID()}">
+                  <SHORT-NAME>${port.name}</SHORT-NAME>
+                  <PROVIDED-COM-SPECS>
+                    <NONQUEUED-SENDER-COM-SPEC>
+                      <DATA-ELEMENT-REF DEST="VARIABLE-DATA-PROTOTYPE">/PortInterfaces/${interface_?.name}/${interface_?.dataElements?.[0]?.name || 'DataElement'}</DATA-ELEMENT-REF>
+                    </NONQUEUED-SENDER-COM-SPEC>
+                  </PROVIDED-COM-SPECS>
+                  <PROVIDED-INTERFACE-TREF DEST="SENDER-RECEIVER-INTERFACE">/PortInterfaces/${interface_?.name}</PROVIDED-INTERFACE-TREF>
+                </${port.direction === 'provided' ? 'P' : 'R'}-PORT-PROTOTYPE>`;
+                }).join('')}
+              </PORTS>
+              <INTERNAL-BEHAVIORS>
+                <SWC-INTERNAL-BEHAVIOR UUID="${generateUUID()}">
+                  <SHORT-NAME>${swc.name}_InternalBehavior</SHORT-NAME>
+                  <RUNNABLES>
+                    ${swc.runnables.map(runnable => `
+                    <RUNNABLE-ENTITY UUID="${generateUUID()}">
+                      <SHORT-NAME>${runnable.name}</SHORT-NAME>
+                      <CAN-BE-INVOKED-CONCURRENTLY>${runnable.canBeInvokedConcurrently}</CAN-BE-INVOKED-CONCURRENTLY>
+                      <DATA-READ-ACCESSS>
+                        ${runnable.accessPoints.filter(ap => ap.type === 'iRead').map(ap => `
+                        <VARIABLE-ACCESS UUID="${generateUUID()}">
+                          <SHORT-NAME>${ap.name}</SHORT-NAME>
+                          <ACCESSED-VARIABLE>
+                            <AUTOSAR-VARIABLE-IREF>
+                              <PORT-PROTOTYPE-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/${swc.name}/${ap.name}_Port</PORT-PROTOTYPE-REF>
+                              <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/PortInterfaces/Interface/DataElement</TARGET-DATA-PROTOTYPE-REF>
+                            </AUTOSAR-VARIABLE-IREF>
+                          </ACCESSED-VARIABLE>
+                        </VARIABLE-ACCESS>`).join('')}
+                      </DATA-READ-ACCESSS>
+                      <DATA-WRITE-ACCESSS>
+                        ${runnable.accessPoints.filter(ap => ap.type === 'iWrite').map(ap => `
+                        <VARIABLE-ACCESS UUID="${generateUUID()}">
+                          <SHORT-NAME>${ap.name}</SHORT-NAME>
+                          <ACCESSED-VARIABLE>
+                            <AUTOSAR-VARIABLE-IREF>
+                              <PORT-PROTOTYPE-REF DEST="P-PORT-PROTOTYPE">/ComponentTypes/${swc.name}/${ap.name}_Port</PORT-PROTOTYPE-REF>
+                              <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/PortInterfaces/Interface/DataElement</TARGET-DATA-PROTOTYPE-REF>
+                            </AUTOSAR-VARIABLE-IREF>
+                          </ACCESSED-VARIABLE>
+                        </VARIABLE-ACCESS>`).join('')}
+                      </DATA-WRITE-ACCESSS>
+                    </RUNNABLE-ENTITY>`).join('')}
+                  </RUNNABLES>
+                </SWC-INTERNAL-BEHAVIOR>
+              </INTERNAL-BEHAVIORS>
+            </APPLICATION-SW-COMPONENT-TYPE>`).join('')}
+          </ELEMENTS>
+        </AR-PACKAGE>
+        <!-- Port Interfaces Package -->
+        <AR-PACKAGE UUID="${generateUUID()}">
+          <SHORT-NAME>PortInterfaces</SHORT-NAME>
+          <ELEMENTS>
+            ${project.interfaces.map(interface_ => `
+            <SENDER-RECEIVER-INTERFACE UUID="${generateUUID()}">
+              <SHORT-NAME>${interface_.name}</SHORT-NAME>
+              <IS-SERVICE>false</IS-SERVICE>
+              <DATA-ELEMENTS>
+                ${interface_.dataElements?.map(de => `
+                <VARIABLE-DATA-PROTOTYPE UUID="${generateUUID()}">
+                  <SHORT-NAME>${de.name}</SHORT-NAME>
+                  <TYPE-TREF DEST="APPLICATION-PRIMITIVE-DATA-TYPE">/DataTypes/${de.applicationDataTypeRef}</TYPE-TREF>
+                </VARIABLE-DATA-PROTOTYPE>`).join('') || ''}
+              </DATA-ELEMENTS>
+            </SENDER-RECEIVER-INTERFACE>`).join('')}
+          </ELEMENTS>
+        </AR-PACKAGE>
+        <!-- Data Types Package -->
+        <AR-PACKAGE UUID="${generateUUID()}">
+          <SHORT-NAME>DataTypes</SHORT-NAME>
+          <AR-PACKAGES>
+            <AR-PACKAGE UUID="${generateUUID()}">
+              <SHORT-NAME>ApplicationDataTypes</SHORT-NAME>
+              <ELEMENTS>
+                ${project.dataTypes.map(dt => `
+                <APPLICATION-PRIMITIVE-DATA-TYPE UUID="${generateUUID()}">
+                  <SHORT-NAME>${dt.name}</SHORT-NAME>
+                  <CATEGORY>PRIMITIVE</CATEGORY>
+                  <SW-DATA-DEF-PROPS>
+                    <SW-DATA-DEF-PROPS-VARIANTS>
+                      <SW-DATA-DEF-PROPS-CONDITIONAL>
+                        <BASE-TYPE-REF DEST="SW-BASE-TYPE">/DataTypes/BaseTypes/${dt.baseType || 'uint32'}</BASE-TYPE-REF>
+                      </SW-DATA-DEF-PROPS-CONDITIONAL>
+                    </SW-DATA-DEF-PROPS-VARIANTS>
+                  </SW-DATA-DEF-PROPS>
+                </APPLICATION-PRIMITIVE-DATA-TYPE>`).join('')}
+              </ELEMENTS>
+            </AR-PACKAGE>
+          </AR-PACKAGES>
+        </AR-PACKAGE>
+      </AR-PACKAGES>
     </AR-PACKAGE>
   </AR-PACKAGES>
 </AUTOSAR>`;
@@ -800,17 +909,39 @@ export const useAutosarStore = create<AutosarStore>()(
       
       generateSWCArxml: (swc: SWC, project: Project) => {
         return `<?xml version="1.0" encoding="UTF-8"?>
-<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_${project.autosarVersion.replace('.', '')}.xsd">
   <AR-PACKAGES>
-    <AR-PACKAGE>
-      <SHORT-NAME>SWCs</SHORT-NAME>
+    <AR-PACKAGE UUID="${generateUUID()}">
+      <SHORT-NAME>ComponentTypes</SHORT-NAME>
       <ELEMENTS>
         <APPLICATION-SW-COMPONENT-TYPE UUID="${swc.uuid}">
           <SHORT-NAME>${swc.name}</SHORT-NAME>
           <DESC>
-            <L-2>${swc.description}</L-2>
+            <L-2 L="EN">${swc.description}</L-2>
           </DESC>
-          <CATEGORY>${swc.category.toUpperCase()}</CATEGORY>
+          <CATEGORY>APPLICATION</CATEGORY>
+          <PORTS>
+            ${swc.ports.map(port => {
+              const interface_ = project.interfaces.find(i => i.id === port.interfaceRef);
+              return `
+            <${port.direction === 'provided' ? 'P' : 'R'}-PORT-PROTOTYPE UUID="${generateUUID()}">
+              <SHORT-NAME>${port.name}</SHORT-NAME>
+              <PROVIDED-INTERFACE-TREF DEST="SENDER-RECEIVER-INTERFACE">/PortInterfaces/${interface_?.name}</PROVIDED-INTERFACE-TREF>
+            </${port.direction === 'provided' ? 'P' : 'R'}-PORT-PROTOTYPE>`;
+            }).join('')}
+          </PORTS>
+          <INTERNAL-BEHAVIORS>
+            <SWC-INTERNAL-BEHAVIOR UUID="${generateUUID()}">
+              <SHORT-NAME>${swc.name}_InternalBehavior</SHORT-NAME>
+              <RUNNABLES>
+                ${swc.runnables.map(runnable => `
+                <RUNNABLE-ENTITY UUID="${generateUUID()}">
+                  <SHORT-NAME>${runnable.name}</SHORT-NAME>
+                  <CAN-BE-INVOKED-CONCURRENTLY>${runnable.canBeInvokedConcurrently}</CAN-BE-INVOKED-CONCURRENTLY>
+                </RUNNABLE-ENTITY>`).join('')}
+              </RUNNABLES>
+            </SWC-INTERNAL-BEHAVIOR>
+          </INTERNAL-BEHAVIORS>
         </APPLICATION-SW-COMPONENT-TYPE>
       </ELEMENTS>
     </AR-PACKAGE>
@@ -820,13 +951,29 @@ export const useAutosarStore = create<AutosarStore>()(
       
       generateDataTypesArxml: (project: Project) => {
         return `<?xml version="1.0" encoding="UTF-8"?>
-<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_${project.autosarVersion.replace('.', '')}.xsd">
   <AR-PACKAGES>
-    <AR-PACKAGE>
+    <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>DataTypes</SHORT-NAME>
-      <ELEMENTS>
-        <!-- Data types would be generated here -->
-      </ELEMENTS>
+      <AR-PACKAGES>
+        <AR-PACKAGE UUID="${generateUUID()}">
+          <SHORT-NAME>ApplicationDataTypes</SHORT-NAME>
+          <ELEMENTS>
+            ${project.dataTypes.map(dt => `
+            <APPLICATION-PRIMITIVE-DATA-TYPE UUID="${generateUUID()}">
+              <SHORT-NAME>${dt.name}</SHORT-NAME>
+              <CATEGORY>PRIMITIVE</CATEGORY>
+              <SW-DATA-DEF-PROPS>
+                <SW-DATA-DEF-PROPS-VARIANTS>
+                  <SW-DATA-DEF-PROPS-CONDITIONAL>
+                    <BASE-TYPE-REF DEST="SW-BASE-TYPE">/DataTypes/BaseTypes/${dt.baseType || 'uint32'}</BASE-TYPE-REF>
+                  </SW-DATA-DEF-PROPS-CONDITIONAL>
+                </SW-DATA-DEF-PROPS-VARIANTS>
+              </SW-DATA-DEF-PROPS>
+            </APPLICATION-PRIMITIVE-DATA-TYPE>`).join('')}
+          </ELEMENTS>
+        </AR-PACKAGE>
+      </AR-PACKAGES>
     </AR-PACKAGE>
   </AR-PACKAGES>
 </AUTOSAR>`;
@@ -834,12 +981,23 @@ export const useAutosarStore = create<AutosarStore>()(
       
       generatePortInterfacesArxml: (project: Project) => {
         return `<?xml version="1.0" encoding="UTF-8"?>
-<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_${project.autosarVersion.replace('.', '')}.xsd">
   <AR-PACKAGES>
-    <AR-PACKAGE>
+    <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>PortInterfaces</SHORT-NAME>
       <ELEMENTS>
-        <!-- Port interfaces would be generated here -->
+        ${project.interfaces.map(interface_ => `
+        <SENDER-RECEIVER-INTERFACE UUID="${generateUUID()}">
+          <SHORT-NAME>${interface_.name}</SHORT-NAME>
+          <IS-SERVICE>false</IS-SERVICE>
+          <DATA-ELEMENTS>
+            ${interface_.dataElements?.map(de => `
+            <VARIABLE-DATA-PROTOTYPE UUID="${generateUUID()}">
+              <SHORT-NAME>${de.name}</SHORT-NAME>
+              <TYPE-TREF DEST="APPLICATION-PRIMITIVE-DATA-TYPE">/DataTypes/ApplicationDataTypes/${de.applicationDataTypeRef}</TYPE-TREF>
+            </VARIABLE-DATA-PROTOTYPE>`).join('') || ''}
+          </DATA-ELEMENTS>
+        </SENDER-RECEIVER-INTERFACE>`).join('')}
       </ELEMENTS>
     </AR-PACKAGE>
   </AR-PACKAGES>
@@ -848,12 +1006,77 @@ export const useAutosarStore = create<AutosarStore>()(
       
       generateTopologyArxml: (project: Project) => {
         return `<?xml version="1.0" encoding="UTF-8"?>
-<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_${project.autosarVersion.replace('.', '')}.xsd">
   <AR-PACKAGES>
-    <AR-PACKAGE>
+    <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>Topology</SHORT-NAME>
       <ELEMENTS>
         <!-- SWC connections and topology would be generated here -->
+        ${project.connections.map(conn => `
+        <ASSEMBLY-SW-CONNECTOR UUID="${generateUUID()}">
+          <SHORT-NAME>${conn.name}</SHORT-NAME>
+          <PROVIDER-IREF>
+            <CONTEXT-COMPONENT-REF DEST="SW-COMPONENT-PROTOTYPE">/Compositions/System/${conn.sourceSwcId}</CONTEXT-COMPONENT-REF>
+            <TARGET-P-PORT-REF DEST="P-PORT-PROTOTYPE">/ComponentTypes/SourceSWC/${conn.sourcePortId}</TARGET-P-PORT-REF>
+          </PROVIDER-IREF>
+          <REQUESTER-IREF>
+            <CONTEXT-COMPONENT-REF DEST="SW-COMPONENT-PROTOTYPE">/Compositions/System/${conn.targetSwcId}</CONTEXT-COMPONENT-REF>
+            <TARGET-R-PORT-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/TargetSWC/${conn.targetPortId}</TARGET-R-PORT-REF>
+          </REQUESTER-IREF>
+        </ASSEMBLY-SW-CONNECTOR>`).join('')}
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+      },
+      
+      generateConstantsArxml: (project: Project) => {
+        return `<?xml version="1.0" encoding="UTF-8"?>
+<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_${project.autosarVersion.replace('.', '')}.xsd">
+  <AR-PACKAGES>
+    <AR-PACKAGE UUID="${generateUUID()}">
+      <SHORT-NAME>Constants</SHORT-NAME>
+      <ELEMENTS>
+        <!-- Project constants would be defined here -->
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+      },
+      
+      generatePackagesArxml: (project: Project) => {
+        return `<?xml version="1.0" encoding="UTF-8"?>
+<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_${project.autosarVersion.replace('.', '')}.xsd">
+  <AR-PACKAGES>
+    <AR-PACKAGE UUID="${generateUUID()}">
+      <SHORT-NAME>${project.name}_Packages</SHORT-NAME>
+      <DESC>
+        <L-2 L="EN">Main package container for ${project.name}</L-2>
+      </DESC>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+      },
+      
+      generateConnectionsArxml: (project: Project) => {
+        return `<?xml version="1.0" encoding="UTF-8"?>
+<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_${project.autosarVersion.replace('.', '')}.xsd">
+  <AR-PACKAGES>
+    <AR-PACKAGE UUID="${generateUUID()}">
+      <SHORT-NAME>Connections</SHORT-NAME>
+      <ELEMENTS>
+        ${project.connections.map(conn => `
+        <ASSEMBLY-SW-CONNECTOR UUID="${generateUUID()}">
+          <SHORT-NAME>${conn.name}</SHORT-NAME>
+          <PROVIDER-IREF>
+            <CONTEXT-COMPONENT-REF DEST="SW-COMPONENT-PROTOTYPE">/System/${conn.sourceSwcId}</CONTEXT-COMPONENT-REF>
+            <TARGET-P-PORT-REF DEST="P-PORT-PROTOTYPE">/ComponentTypes/${conn.sourceSwcId}/${conn.sourcePortId}</TARGET-P-PORT-REF>
+          </PROVIDER-IREF>
+          <REQUESTER-IREF>
+            <CONTEXT-COMPONENT-REF DEST="SW-COMPONENT-PROTOTYPE">/System/${conn.targetSwcId}</CONTEXT-COMPONENT-REF>
+            <TARGET-R-PORT-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/${conn.targetSwcId}/${conn.targetPortId}</TARGET-R-PORT-REF>
+          </REQUESTER-IREF>
+        </ASSEMBLY-SW-CONNECTOR>`).join('')}
       </ELEMENTS>
     </AR-PACKAGE>
   </AR-PACKAGES>
