@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAutosarStore } from "@/store/autosarStore";
+import DeleteConfirmDialog from "@/components/DeleteConfirmDialog";
 
 const ProjectManager = () => {
   const { toast } = useToast();
@@ -34,12 +35,16 @@ const ProjectManager = () => {
     currentProject,
     createProject, 
     loadProject,
+    deleteProject,
     importArxml 
   } = useAutosarStore();
   
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   // Form states
   const [name, setName] = useState("");
@@ -104,6 +109,32 @@ const ProjectManager = () => {
         });
       }
     }
+  };
+
+  const handleDeleteProject = async (projectId: string) => {
+    setIsDeleting(true);
+    try {
+      deleteProject(projectId);
+      toast({
+        title: "Project Deleted",
+        description: "Project has been deleted successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Delete Failed",
+        description: "Failed to delete project",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+      setDeleteDialogOpen(false);
+      setProjectToDelete(null);
+    }
+  };
+
+  const openDeleteDialog = (projectId: string, projectName: string) => {
+    setProjectToDelete(projectId);
+    setDeleteDialogOpen(true);
   };
 
   const getStatusColor = (project: any) => {
@@ -320,7 +351,10 @@ const ProjectManager = () => {
                       <Settings className="h-4 w-4 mr-2" />
                       Settings
                     </DropdownMenuItem>
-                    <DropdownMenuItem className="text-red-500">
+                    <DropdownMenuItem 
+                      className="text-red-500"
+                      onClick={() => openDeleteDialog(project.id, project.name)}
+                    >
                       <Trash2 className="h-4 w-4 mr-2" />
                       Delete
                     </DropdownMenuItem>
@@ -390,6 +424,16 @@ const ProjectManager = () => {
           </CardContent>
         </Card>
       )}
+      
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete Project"
+        description="Are you sure you want to delete this project? This action cannot be undone."
+        itemName={projects.find(p => p.id === projectToDelete)?.name || "Unknown Project"}
+        onConfirm={() => projectToDelete && handleDeleteProject(projectToDelete)}
+        isLoading={isDeleting}
+      />
     </div>
   );
 };

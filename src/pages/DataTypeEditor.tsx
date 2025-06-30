@@ -1,399 +1,343 @@
-
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import { Database, Plus, Edit, Trash2, Hash, ListOrdered, Layers } from "lucide-react";
-import { useAutosarStore, DataType } from "@/store/autosarStore";
+import { 
+  Plus, 
+  Search, 
+  MoreVertical, 
+  Database,
+  Hash,
+  List,
+  FileType,
+  Trash2,
+  Edit
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useAutosarStore } from "@/store/autosarStore";
+import DeleteConfirmDialog from "@/components/DeleteConfirmDialog";
 
 const DataTypeEditor = () => {
   const { toast } = useToast();
   const { 
-    currentProject, 
-    createDataType, 
-    updateDataType, 
-    deleteDataType 
+    currentProject,
+    createDataType,
+    updateDataType,
+    deleteDataType
   } = useAutosarStore();
   
+  const [searchTerm, setSearchTerm] = useState("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [editingDataType, setEditingDataType] = useState<DataType | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [dataTypeToDelete, setDataTypeToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   // Form states
   const [name, setName] = useState("");
+  const [category, setCategory] = useState<'primitive' | 'array' | 'record' | 'typedef'>('primitive');
+  const [baseType, setBaseType] = useState<string | undefined>(undefined);
+  const [arraySize, setArraySize] = useState<number | undefined>(undefined);
   const [description, setDescription] = useState("");
-  const [category, setCategory] = useState<DataType['category']>("primitive");
-  const [baseType, setBaseType] = useState("");
-  const [arraySize, setArraySize] = useState<number | undefined>();
-  const [recordElements, setRecordElements] = useState<{name: string; type: string}[]>([]);
-
-  const primitiveTypes = [
-    "uint8", "uint16", "uint32", "uint64",
-    "sint8", "sint16", "sint32", "sint64", 
-    "float32", "float64", "boolean"
-  ];
-
-  const resetForm = () => {
-    setName("");
-    setDescription("");
-    setCategory("primitive");
-    setBaseType("");
-    setArraySize(undefined);
-    setRecordElements([]);
-    setEditingDataType(null);
-  };
 
   const handleCreateDataType = () => {
-    if (!name) {
+    if (!name || !category) {
       toast({
         title: "Validation Error",
-        description: "Data type name is required",
+        description: "Data Type name and category are required",
         variant: "destructive",
       });
       return;
     }
 
-    if (!currentProject) {
-      toast({
-        title: "No Project",
-        description: "Please create or load a project first",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const dataTypeData: Omit<DataType, 'id'> = {
+    createDataType({
       name,
-      description,
       category,
-      ...(category === "primitive" && { baseType }),
-      ...(category === "array" && { baseType, arraySize }),
-      ...(category === "record" && { elements: recordElements }),
-    };
+      baseType,
+      arraySize,
+      description,
+    });
 
-    if (editingDataType) {
-      updateDataType(editingDataType.id, dataTypeData);
-      toast({
-        title: "Data Type Updated",
-        description: `${name} has been updated successfully`,
-      });
-    } else {
-      createDataType(dataTypeData);
-      toast({
-        title: "Data Type Created",
-        description: `${name} has been created successfully`,
-      });
-    }
+    toast({
+      title: "Data Type Created",
+      description: `${name} has been created successfully`,
+    });
 
-    resetForm();
+    // Reset form
+    setName("");
+    setCategory('primitive');
+    setBaseType(undefined);
+    setArraySize(undefined);
+    setDescription("");
     setIsCreateDialogOpen(false);
   };
 
-  const handleEditDataType = (dataType: DataType) => {
-    setName(dataType.name);
-    setDescription(dataType.description || "");
-    setCategory(dataType.category);
-    setBaseType(dataType.baseType || "");
-    setArraySize(dataType.arraySize);
-    setRecordElements(dataType.elements || []);
-    setEditingDataType(dataType);
-    setIsCreateDialogOpen(true);
-  };
-
-  const handleDeleteDataType = (id: string) => {
-    deleteDataType(id);
-    toast({
-      title: "Data Type Deleted",
-      description: "Data type has been deleted",
-    });
-  };
-
-  const addRecordElement = () => {
-    setRecordElements([...recordElements, { name: "", type: "" }]);
-  };
-
-  const updateRecordElement = (index: number, field: 'name' | 'type', value: string) => {
-    const updated = [...recordElements];
-    updated[index][field] = value;
-    setRecordElements(updated);
-  };
-
-  const removeRecordElement = (index: number) => {
-    setRecordElements(recordElements.filter((_, i) => i !== index));
-  };
-
-  const getDataTypeIcon = (category: DataType['category']) => {
-    switch (category) {
-      case 'primitive': return Hash;
-      case 'array': return ListOrdered;
-      case 'record': return Layers;
-      default: return Database;
+  const handleDeleteDataType = async () => {
+    if (!dataTypeToDelete) return;
+    
+    setIsDeleting(true);
+    try {
+      deleteDataType(dataTypeToDelete.id);
+      toast({
+        title: "Data Type Deleted",
+        description: `Data type ${dataTypeToDelete.name} has been deleted successfully`,
+      });
+    } catch (error) {
+      toast({
+        title: "Delete Failed",
+        description: "Failed to delete data type",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+      setDeleteDialogOpen(false);
+      setDataTypeToDelete(null);
     }
   };
 
-  if (!currentProject) {
-    return (
-      <div className="space-y-6 animate-fade-in">
-        <div className="text-center py-12">
-          <Database className="h-16 w-16 mx-auto mb-4 opacity-50" />
-          <h2 className="text-2xl font-bold mb-2">No Project Loaded</h2>
-          <p className="text-muted-foreground mb-4">
-            Please create or load a project to manage data types
-          </p>
-          <Button onClick={() => window.location.href = '/projects'}>
-            Go to Projects
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  const openDeleteDialog = (id: string, name: string) => {
+    setDataTypeToDelete({ id, name });
+    setDeleteDialogOpen(true);
+  };
+
+  const filteredDataTypes = currentProject?.dataTypes.filter(dataType =>
+    dataType.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    dataType.description?.toLowerCase().includes(searchTerm.toLowerCase())
+  ) || [];
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Data Type Editor</h1>
           <p className="text-muted-foreground mt-1">
-            Define and manage application data types and elements
+            Manage your AUTOSAR data types
           </p>
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
-          setIsCreateDialogOpen(open);
-          if (!open) resetForm();
-        }}>
-          <DialogTrigger asChild>
-            <Button className="autosar-button flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              Add Data Type
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>
-                {editingDataType ? "Edit Data Type" : "Create Data Type"}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="dt-name">Name *</Label>
-                  <Input
-                    id="dt-name"
-                    placeholder="e.g., EngineSpeed_T"
+        <div className="flex gap-2">
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="autosar-button flex items-center gap-2">
+                <Plus className="h-4 w-4" />
+                New Data Type
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Create New Data Type</DialogTitle>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="name">Data Type Name *</Label>
+                  <Input 
+                    id="name" 
+                    placeholder="Enter data type name" 
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                   />
                 </div>
-                <div>
-                  <Label htmlFor="dt-category">Category *</Label>
-                  <Select value={category} onValueChange={(value: DataType['category']) => setCategory(value)}>
+                <div className="grid gap-2">
+                  <Label htmlFor="category">Category *</Label>
+                  <Select value={category} onValueChange={(value) => setCategory(value as 'primitive' | 'array' | 'record' | 'typedef')}>
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue placeholder="Select a category" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="primitive">Primitive Type</SelectItem>
-                      <SelectItem value="array">Array Type</SelectItem>
-                      <SelectItem value="record">Record/Structure</SelectItem>
-                      <SelectItem value="typedef">Type Definition</SelectItem>
+                      <SelectItem value="primitive">Primitive</SelectItem>
+                      <SelectItem value="array">Array</SelectItem>
+                      <SelectItem value="record">Record</SelectItem>
+                      <SelectItem value="typedef">Typedef</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-
-              <div>
-                <Label htmlFor="dt-description">Description</Label>
-                <Textarea
-                  id="dt-description"
-                  placeholder="Description of the data type"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={2}
-                />
-              </div>
-
-              {(category === "primitive" || category === "array" || category === "typedef") && (
-                <div>
-                  <Label htmlFor="dt-base-type">Base Type *</Label>
-                  <Select value={baseType} onValueChange={setBaseType}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select base type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {primitiveTypes.map((type) => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
-                      ))}
-                      {currentProject.dataTypes.map((dt) => (
-                        <SelectItem key={dt.id} value={dt.name}>{dt.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {category === "array" && (
-                <div>
-                  <Label htmlFor="dt-array-size">Array Size</Label>
-                  <Input
-                    id="dt-array-size"
-                    type="number"
-                    placeholder="e.g., 10"
-                    value={arraySize || ""}
-                    onChange={(e) => setArraySize(e.target.value ? parseInt(e.target.value) : undefined)}
+                {category === 'primitive' && (
+                  <div className="grid gap-2">
+                    <Label htmlFor="base-type">Base Type</Label>
+                    <Select value={baseType} onValueChange={setBaseType}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a base type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="uint8">uint8</SelectItem>
+                        <SelectItem value="uint16">uint16</SelectItem>
+                        <SelectItem value="uint32">uint32</SelectItem>
+                        <SelectItem value="uint64">uint64</SelectItem>
+                        <SelectItem value="float32">float32</SelectItem>
+                        <SelectItem value="float64">float64</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                {category === 'array' && (
+                  <div className="grid gap-2">
+                    <Label htmlFor="array-size">Array Size</Label>
+                    <Input 
+                      id="array-size" 
+                      type="number"
+                      placeholder="Enter array size" 
+                      value={arraySize}
+                      onChange={(e) => setArraySize(Number(e.target.value))}
+                    />
+                  </div>
+                )}
+                <div className="grid gap-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Input 
+                    id="description" 
+                    placeholder="Brief description of the data type" 
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
                   />
                 </div>
-              )}
-
-              {category === "record" && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label>Record Elements</Label>
-                    <Button type="button" size="sm" onClick={addRecordElement}>
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add Element
-                    </Button>
-                  </div>
-                  {recordElements.map((element, index) => (
-                    <div key={index} className="flex gap-2 items-center">
-                      <Input
-                        placeholder="Element name"
-                        value={element.name}
-                        onChange={(e) => updateRecordElement(index, 'name', e.target.value)}
-                      />
-                      <Select value={element.type} onValueChange={(value) => updateRecordElement(index, 'type', value)}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {primitiveTypes.map((type) => (
-                            <SelectItem key={type} value={type}>{type}</SelectItem>
-                          ))}
-                          {currentProject.dataTypes.map((dt) => (
-                            <SelectItem key={dt.id} value={dt.name}>{dt.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => removeRecordElement(index)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2 pt-4">
-                <Button variant="outline" onClick={() => {
-                  setIsCreateDialogOpen(false);
-                  resetForm();
-                }}>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleCreateDataType} className="autosar-button">
-                  {editingDataType ? "Update" : "Create"} Data Type
+                <Button className="autosar-button" onClick={handleCreateDataType}>
+                  Create Data Type
                 </Button>
               </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
+
+      {/* Search and Filters */}
+      <Card className="autosar-card">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search data types..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Select defaultValue="all">
+              <SelectTrigger className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Data Types</SelectItem>
+                <SelectItem value="primitive">Primitive</SelectItem>
+                <SelectItem value="array">Array</SelectItem>
+                <SelectItem value="record">Record</SelectItem>
+                <SelectItem value="typedef">Typedef</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Data Types Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {currentProject.dataTypes.map((dataType) => {
-          const IconComponent = getDataTypeIcon(dataType.category);
-          return (
-            <Card key={dataType.id} className="autosar-card hover:shadow-lg transition-all duration-300">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
+        {filteredDataTypes.map((dataType) => (
+          <Card key={dataType.id} className="autosar-card hover:shadow-xl transition-all duration-300">
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+                    {dataType.category === 'primitive' && <Hash className="h-5 w-5 text-white" />}
+                    {dataType.category === 'array' && <List className="h-5 w-5 text-white" />}
+                    {dataType.category === 'record' && <Database className="h-5 w-5 text-white" />}
+                    {dataType.category === 'typedef' && <FileType className="h-5 w-5 text-white" />}
+                  </div>
                   <div>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <IconComponent className="h-5 w-5" />
-                      {dataType.name}
-                    </CardTitle>
+                    <CardTitle className="text-lg">{dataType.name}</CardTitle>
                     <Badge variant="outline" className="mt-1 capitalize">
                       {dataType.category}
                     </Badge>
                   </div>
-                  <div className="flex gap-1">
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => handleEditDataType(dataType)}
-                    >
-                      <Edit className="h-4 w-4" />
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm">
+                      <MoreVertical className="h-4 w-4" />
                     </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => handleDeleteDataType(dataType.id)}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem>
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      className="text-red-500"
+                      onClick={() => openDeleteDialog(dataType.id, dataType.name)}
                     >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <CardDescription className="mb-4">
+                {dataType.description || "No description provided"}
+              </CardDescription>
+              
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Category:</span>
+                  <span className="font-medium capitalize">{dataType.category}</span>
+                </div>
+                {dataType.baseType && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Base Type:</span>
+                    <span className="font-medium">{dataType.baseType}</span>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <CardDescription className="mb-4 min-h-[40px]">
-                  {dataType.description || "No description provided"}
-                </CardDescription>
-                
-                <div className="space-y-2 text-sm">
-                  {dataType.baseType && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Base Type:</span>
-                      <span className="font-medium">{dataType.baseType}</span>
-                    </div>
-                  )}
-                  {dataType.arraySize && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Array Size:</span>
-                      <span className="font-medium">{dataType.arraySize}</span>
-                    </div>
-                  )}
-                  {dataType.elements && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Elements:</span>
-                      <span className="font-medium">{dataType.elements.length}</span>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+                )}
+                {dataType.arraySize && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Array Size:</span>
+                    <span className="font-medium">{dataType.arraySize}</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {currentProject.dataTypes.length === 0 && (
-        <Card className="autosar-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Database className="h-5 w-5" />
-              Application Data Types
-            </CardTitle>
-            <CardDescription>
-              Custom data types for your AUTOSAR application
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-12 text-muted-foreground">
-              <Database className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No data types defined yet</p>
-              <Button variant="outline" className="mt-4" onClick={() => setIsCreateDialogOpen(true)}>
-                Create Data Type
-              </Button>
-            </div>
+      {currentProject?.dataTypes.length === 0 && (
+        <Card className="autosar-car">
+          <CardContent className="text-center py-12">
+            <Database className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p className="text-muted-foreground mb-4">
+              No data types created yet
+            </p>
+            <Button 
+              onClick={() => setIsCreateDialogOpen(true)}
+              className="autosar-button"
+            >
+              Create Your First Data Type
+            </Button>
           </CardContent>
         </Card>
       )}
+
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete Data Type"
+        description="Are you sure you want to delete this data type? This action cannot be undone and may affect data elements that use this type."
+        itemName={dataTypeToDelete?.name || "Unknown Data Type"}
+        onConfirm={handleDeleteDataType}
+        isLoading={isDeleting}
+      />
     </div>
   );
 };

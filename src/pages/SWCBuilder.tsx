@@ -1,70 +1,70 @@
-
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { 
-  Box, 
   Plus, 
-  Settings, 
-  FileCode, 
-  Layers,
-  CheckCircle,
-  AlertTriangle,
+  Search, 
+  MoreVertical, 
+  Box, 
+  Settings,
+  Play,
+  Clock,
+  Zap,
   Trash2,
   Edit
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useAutosarStore } from "@/store/autosarStore";
+import DeleteConfirmDialog from "@/components/DeleteConfirmDialog";
 
 const SWCBuilder = () => {
   const { toast } = useToast();
   const { 
-    currentProject, 
-    createSWC, 
-    updateSWC, 
+    currentProject,
+    createSWC,
+    updateSWC,
     deleteSWC,
-    importArxml 
+    createRunnable,
+    updateRunnable,
+    deleteRunnable
   } = useAutosarStore();
   
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
-  const [selectedSWC, setSelectedSWC] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isCreateSWCDialogOpen, setIsCreateSWCDialogOpen] = useState(false);
+  const [isCreateRunnableDialogOpen, setIsCreateRunnableDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string; type: 'swc' | 'runnable' } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   // Form states
   const [swcName, setSwcName] = useState("");
   const [swcDescription, setSwcDescription] = useState("");
-  const [swcCategory, setSwcCategory] = useState("");
+  const [swcCategory, setSwcCategory] = useState("application");
   const [swcType, setSwcType] = useState("atomic");
-  
-  const categories = [
-    { value: "application", label: "Application SWC" },
-    { value: "service", label: "Service SWC" },
-    { value: "ecu-abstraction", label: "ECU Abstraction SWC" },
-    { value: "complex-driver", label: "Complex Driver SWC" },
-    { value: "sensor-actuator", label: "Sensor/Actuator SWC" },
-  ];
+  const [autosarVersion, setAutosarVersion] = useState("4.3.1");
+
+  const [runnableName, setRunnableName] = useState("");
+  const [runnableType, setRunnableType] = useState<'init' | 'periodic' | 'event'>("periodic");
+  const [runnablePeriod, setRunnablePeriod] = useState(100);
+  const [canBeInvokedConcurrently, setCanBeInvokedConcurrently] = useState(false);
+  const [selectedSwcId, setSelectedSwcId] = useState<string | null>(null);
 
   const handleCreateSWC = () => {
-    if (!swcName || !swcCategory) {
+    if (!swcName) {
       toast({
         title: "Validation Error",
-        description: "SWC name and category are required",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!currentProject) {
-      toast({
-        title: "No Project",
-        description: "Please create or load a project first",
+        description: "SWC name is required",
         variant: "destructive",
       });
       return;
@@ -73,9 +73,9 @@ const SWCBuilder = () => {
     createSWC({
       name: swcName,
       description: swcDescription,
-      category: swcCategory as any,
-      type: swcType as any,
-      autosarVersion: currentProject.autosarVersion,
+      category: swcCategory,
+      type: swcType,
+      autosarVersion,
     });
 
     toast({
@@ -86,71 +86,84 @@ const SWCBuilder = () => {
     // Reset form
     setSwcName("");
     setSwcDescription("");
-    setSwcCategory("");
+    setSwcCategory("application");
     setSwcType("atomic");
-    setIsCreateDialogOpen(false);
+    setAutosarVersion("4.3.1");
+    setIsCreateSWCDialogOpen(false);
   };
 
-  const handleImportArxml = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      try {
-        await importArxml(file);
+  const handleCreateRunnable = () => {
+    if (!runnableName || !selectedSwcId) {
+      toast({
+        title: "Validation Error",
+        description: "Runnable name and SWC selection are required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    createRunnable({
+      name: runnableName,
+      swcId: selectedSwcId,
+      runnableType,
+      period: runnableType === 'periodic' ? runnablePeriod : undefined,
+      canBeInvokedConcurrently,
+      events: [],
+    });
+
+    toast({
+      title: "Runnable Created",
+      description: `${runnableName} has been created successfully`,
+    });
+
+    // Reset form
+    setRunnableName("");
+    setRunnableType("periodic");
+    setRunnablePeriod(100);
+    setCanBeInvokedConcurrently(false);
+    setIsCreateRunnableDialogOpen(false);
+  };
+
+  const handleDeleteItem = async () => {
+    if (!itemToDelete) return;
+    
+    setIsDeleting(true);
+    try {
+      if (itemToDelete.type === 'swc') {
+        deleteSWC(itemToDelete.id);
         toast({
-          title: "Import Successful",
-          description: `${file.name} has been imported`,
+          title: "SWC Deleted",
+          description: `SWC ${itemToDelete.name} has been deleted successfully`,
         });
-        setIsImportDialogOpen(false);
-      } catch (error) {
+      } else if (itemToDelete.type === 'runnable') {
+        deleteRunnable(itemToDelete.id);
         toast({
-          title: "Import Failed",
-          description: "Failed to import ARXML file",
-          variant: "destructive",
+          title: "Runnable Deleted",
+          description: `Runnable ${itemToDelete.name} has been deleted successfully`,
         });
       }
+    } catch (error) {
+      toast({
+        title: "Delete Failed",
+        description: "Failed to delete item",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+      setDeleteDialogOpen(false);
+      setItemToDelete(null);
     }
   };
 
-  const handleDeleteSWC = (swcId: string) => {
-    deleteSWC(swcId);
-    toast({
-      title: "SWC Deleted",
-      description: "Software component has been deleted",
-    });
+  const openDeleteDialog = (id: string, name: string, type: 'swc' | 'runnable') => {
+    setItemToDelete({ id, name, type });
+    setDeleteDialogOpen(true);
   };
 
-  const getValidationStatus = (swc: any) => {
-    const rules = [
-      { valid: !!swc.name, message: "SWC name is required" },
-      { valid: !!swc.category, message: "Category selection required" },
-      { valid: swc.ports?.length > 0, message: "At least one port recommended" },
-    ];
-    
-    const validCount = rules.filter(r => r.valid).length;
-    return {
-      status: validCount === rules.length ? "valid" : validCount > 1 ? "warning" : "error",
-      validCount,
-      totalCount: rules.length,
-      rules
-    };
-  };
-
-  if (!currentProject) {
-    return (
-      <div className="space-y-6 animate-fade-in">
-        <div className="text-center py-12">
-          <Box className="h-16 w-16 mx-auto mb-4 opacity-50" />
-          <h2 className="text-2xl font-bold mb-2">No Project Loaded</h2>
-          <p className="text-muted-foreground mb-4">
-            Please create or load a project to start building SWCs
-          </p>
-          <Button onClick={() => window.location.href = '/projects'}>
-            Go to Projects
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  const filteredSWCs = currentProject?.swcs.filter(swc =>
+    swc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    swc.description.toLowerCase().includes(searchTerm.toLowerCase())
+  ) || [];
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -159,210 +172,311 @@ const SWCBuilder = () => {
         <div>
           <h1 className="text-3xl font-bold text-foreground">SWC Builder</h1>
           <p className="text-muted-foreground mt-1">
-            Create and configure AUTOSAR Software Components
+            Define and manage Software Components (SWCs)
           </p>
         </div>
         <div className="flex gap-2">
-          <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+          <Dialog open={isCreateRunnableDialogOpen} onOpenChange={setIsCreateRunnableDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="outline">
-                <FileCode className="h-4 w-4 mr-2" />
-                Import ARXML
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Import ARXML File</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="arxml-file">Select ARXML File</Label>
-                  <Input
-                    id="arxml-file"
-                    type="file"
-                    accept=".arxml,.xml"
-                    onChange={handleImportArxml}
-                    className="mt-2"
-                  />
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Supported formats: .arxml, .xml (AUTOSAR compliant)
-                </p>
-              </div>
-            </DialogContent>
-          </Dialog>
-          
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="autosar-button">
                 <Plus className="h-4 w-4 mr-2" />
-                Create SWC
+                Add Runnable
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="sm:max-w-[425px]">
               <DialogHeader>
-                <DialogTitle>Create New SWC</DialogTitle>
+                <DialogTitle>Create New Runnable</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="swc-name">Short Name *</Label>
-                  <Input
-                    id="swc-name"
-                    placeholder="e.g., EngineController"
-                    value={swcName}
-                    onChange={(e) => setSwcName(e.target.value)}
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="runnable-name">Runnable Name *</Label>
+                  <Input 
+                    id="runnable-name" 
+                    placeholder="Enter runnable name" 
+                    value={runnableName}
+                    onChange={(e) => setRunnableName(e.target.value)}
                   />
                 </div>
-                
-                <div>
-                  <Label htmlFor="swc-description">Description</Label>
-                  <Textarea
-                    id="swc-description"
-                    placeholder="Brief description of the component"
-                    value={swcDescription}
-                    onChange={(e) => setSwcDescription(e.target.value)}
-                    rows={3}
-                  />
-                </div>
-                
-                <div>
-                  <Label htmlFor="swc-category">Category *</Label>
-                  <Select value={swcCategory} onValueChange={setSwcCategory}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
+                <div className="grid gap-2">
+                  <Label htmlFor="swc-selection">Select SWC *</Label>
+                  <Select onValueChange={setSelectedSwcId}>
+                    <SelectTrigger id="swc-selection">
+                      <SelectValue placeholder="Select a SWC" />
                     </SelectTrigger>
                     <SelectContent>
-                      {categories.map((category) => (
-                        <SelectItem key={category.value} value={category.value}>
-                          {category.label}
-                        </SelectItem>
+                      {currentProject?.swcs.map((swc) => (
+                        <SelectItem key={swc.id} value={swc.id}>{swc.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                
-                <div>
-                  <Label htmlFor="swc-type">Type</Label>
-                  <Select value={swcType} onValueChange={setSwcType}>
-                    <SelectTrigger>
+                <div className="grid gap-2">
+                  <Label htmlFor="runnable-type">Runnable Type</Label>
+                  <Select value={runnableType} onValueChange={(value) => setRunnableType(value as 'init' | 'periodic' | 'event')}>
+                    <SelectTrigger id="runnable-type">
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="init">Init</SelectItem>
+                      <SelectItem value="periodic">Periodic</SelectItem>
+                      <SelectItem value="event">Event</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {runnableType === 'periodic' && (
+                  <div className="grid gap-2">
+                    <Label htmlFor="runnable-period">Period (ms)</Label>
+                    <Input 
+                      id="runnable-period" 
+                      type="number"
+                      placeholder="Enter period in milliseconds" 
+                      value={runnablePeriod}
+                      onChange={(e) => setRunnablePeriod(Number(e.target.value))}
+                    />
+                  </div>
+                )}
+
+                <div className="flex items-center space-x-2">
+                  <input 
+                    type="checkbox" 
+                    id="concurrent" 
+                    className="h-4 w-4"
+                    checked={canBeInvokedConcurrently}
+                    onChange={(e) => setCanBeInvokedConcurrently(e.target.checked)}
+                  />
+                  <Label htmlFor="concurrent">Can be invoked concurrently</Label>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setIsCreateRunnableDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button className="autosar-button" onClick={handleCreateRunnable}>
+                  Create Runnable
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+          
+          <Dialog open={isCreateSWCDialogOpen} onOpenChange={setIsCreateSWCDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="autosar-button flex items-center gap-2">
+                <Plus className="h-4 w-4" />
+                New SWC
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Create New SWC</DialogTitle>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="name">SWC Name *</Label>
+                  <Input 
+                    id="name" 
+                    placeholder="Enter SWC name" 
+                    value={swcName}
+                    onChange={(e) => setSwcName(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Input 
+                    id="description" 
+                    placeholder="Brief description of the SWC" 
+                    value={swcDescription}
+                    onChange={(e) => setSwcDescription(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="category">Category</Label>
+                  <Select value={swcCategory} onValueChange={setSwcCategory}>
+                    <SelectTrigger id="category">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="atomic">Atomic SWC</SelectItem>
+                      <SelectItem value="application">Application</SelectItem>
+                      <SelectItem value="service">Service</SelectItem>
+                      <SelectItem value="ecu-abstraction">ECU Abstraction</SelectItem>
+                      <SelectItem value="complex-driver">Complex Driver</SelectItem>
+                      <SelectItem value="sensor-actuator">Sensor/Actuator</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="type">Type</Label>
+                  <Select value={swcType} onValueChange={setSwcType}>
+                    <SelectTrigger id="type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="atomic">Atomic</SelectItem>
                       <SelectItem value="composition">Composition</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                
-                <div className="flex justify-end gap-2 pt-4">
-                  <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleCreateSWC} className="autosar-button">
-                    Create SWC
-                  </Button>
+                <div className="grid gap-2">
+                  <Label htmlFor="autosar-version">AUTOSAR Version</Label>
+                  <Select value={autosarVersion} onValueChange={setAutosarVersion}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="4.3.1">AUTOSAR 4.3.1</SelectItem>
+                      <SelectItem value="4.2.2">AUTOSAR 4.2.2</SelectItem>
+                      <SelectItem value="4.4.0">AUTOSAR 4.4.0</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setIsCreateSWCDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button className="autosar-button" onClick={handleCreateSWC}>
+                  Create SWC
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
         </div>
       </div>
 
-      {/* SWC List */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-        {currentProject.swcs.map((swc) => {
-          const validation = getValidationStatus(swc);
-          return (
-            <Card key={swc.id} className="autosar-card hover:shadow-lg transition-all duration-300">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
+      {/* Search and Filters */}
+      <Card className="autosar-card">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search SWCs..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Select defaultValue="all">
+              <SelectTrigger className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All SWCs</SelectItem>
+                <SelectItem value="application">Application</SelectItem>
+                <SelectItem value="service">Service</SelectItem>
+                <SelectItem value="ecu-abstraction">ECU Abstraction</SelectItem>
+                <SelectItem value="complex-driver">Complex Driver</SelectItem>
+                <SelectItem value="sensor-actuator">Sensor / Actuator</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* SWCs Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredSWCs.map((swc) => (
+          <Card key={swc.id} className="autosar-card hover:shadow-xl transition-all duration-300">
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 autosar-gradient rounded-lg flex items-center justify-center">
+                    <Box className="h-5 w-5 text-white" />
+                  </div>
                   <div>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Box className="h-5 w-5" />
-                      {swc.name}
-                    </CardTitle>
-                    <Badge variant="outline" className="mt-1">
-                      {categories.find(c => c.value === swc.category)?.label}
+                    <CardTitle className="text-lg">{swc.name}</CardTitle>
+                    <Badge variant="outline" className="mt-1 capitalize">
+                      {swc.category}
                     </Badge>
                   </div>
-                  <div className="flex gap-1">
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => setSelectedSWC(swc.id)}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => handleDeleteSWC(swc.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <CardDescription className="mb-4 min-h-[40px]">
-                  {swc.description || "No description provided"}
-                </CardDescription>
-                
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Type:</span>
-                    <span className="font-medium capitalize">{swc.type}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Ports:</span>
-                    <span className="font-medium">{swc.ports?.length || 0}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Runnables:</span>
-                    <span className="font-medium">{swc.runnables?.length || 0}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Validation:</span>
-                    <div className="flex items-center gap-1">
-                      {validation.status === "valid" ? (
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                      ) : (
-                        <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                      )}
-                      <span className="text-xs">
-                        {validation.validCount}/{validation.totalCount}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
-                  <Badge className={`${
-                    validation.status === "valid" 
-                      ? "bg-green-500/10 text-green-500" 
-                      : "bg-yellow-500/10 text-yellow-500"
-                  }`}>
-                    {validation.status === "valid" ? "Valid" : "Incomplete"}
-                  </Badge>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => window.location.href = `/port-editor?swc=${swc.id}`}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem>
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <Settings className="h-4 w-4 mr-2" />
                       Configure
-                    </Button>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      className="text-red-500"
+                      onClick={() => openDeleteDialog(swc.id, swc.name, 'swc')}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <CardDescription className="mb-4">
+                {swc.description || "No description provided"}
+              </CardDescription>
+              
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Ports:</span>
+                  <span className="font-medium">{swc.ports?.length || 0}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Runnables:</span>
+                  <span className="font-medium">{swc.runnables?.length || 0}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Type:</span>
+                  <Badge variant="secondary" className="text-xs capitalize">
+                    {swc.type}
+                  </Badge>
+                </div>
+              </div>
+
+              {swc.runnables && swc.runnables.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-border">
+                  <h4 className="text-sm font-medium mb-2">Runnables</h4>
+                  <div className="space-y-2">
+                    {swc.runnables.map((runnable) => (
+                      <div key={runnable.id} className="flex items-center justify-between text-xs p-2 bg-muted/50 rounded">
+                        <div className="flex items-center gap-2">
+                          {runnable.runnableType === 'init' && <Zap className="h-3 w-3" />}
+                          {runnable.runnableType === 'periodic' && <Clock className="h-3 w-3" />}
+                          {runnable.runnableType === 'event' && <Play className="h-3 w-3" />}
+                          <span>{runnable.name}</span>
+                        </div>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                          onClick={() => openDeleteDialog(runnable.id, runnable.name, 'runnable')}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+              )}
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {currentProject.swcs.length === 0 && (
+      {filteredSWCs.length === 0 && (
         <Card className="autosar-card">
           <CardContent className="text-center py-12">
             <Box className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p className="text-muted-foreground mb-4">No SWCs created yet</p>
+            <p className="text-muted-foreground mb-4">
+              No SWCs created yet
+            </p>
             <Button 
-              onClick={() => setIsCreateDialogOpen(true)}
+              onClick={() => setIsCreateSWCDialogOpen(true)}
               className="autosar-button"
             >
               Create Your First SWC
@@ -370,6 +484,16 @@ const SWCBuilder = () => {
           </CardContent>
         </Card>
       )}
+
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title={`Delete ${itemToDelete?.type === 'swc' ? 'SWC' : 'Runnable'}`}
+        description={`Are you sure you want to delete this ${itemToDelete?.type}? This action cannot be undone and may affect other components.`}
+        itemName={itemToDelete?.name || "Unknown Item"}
+        onConfirm={handleDeleteItem}
+        isLoading={isDeleting}
+      />
     </div>
   );
 };

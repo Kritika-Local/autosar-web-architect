@@ -106,6 +106,7 @@ interface AutosarStore {
   // Project management
   createProject: (project: Omit<Project, 'id' | 'createdAt' | 'lastModified' | 'isDraft' | 'autoSaveEnabled'>) => void;
   updateProject: (id: string, updates: Partial<Project>) => void;
+  deleteProject: (id: string) => void;
   loadProject: (id: string) => void;
   saveProjectAsDraft: () => void;
   autoSave: () => void;
@@ -168,9 +169,9 @@ export const useAutosarStore = create<AutosarStore>()(
       currentProject: null,
       projects: [],
       
-      createProject: (projectData) => {
+      createProject: (project: Omit<Project, 'id' | 'createdAt' | 'lastModified' | 'isDraft' | 'autoSaveEnabled'>) => {
         const project: Project = {
-          ...projectData,
+          ...project,
           id: generateUUID(),
           createdAt: new Date().toISOString(),
           lastModified: new Date().toISOString(),
@@ -199,6 +200,24 @@ export const useAutosarStore = create<AutosarStore>()(
             ? { ...state.currentProject, ...updates, lastModified: new Date().toISOString() }
             : state.currentProject,
         }));
+      },
+      
+      deleteProject: (id) => {
+        set((state) => {
+          const newProjects = state.projects.filter((p) => p.id !== id);
+          const newCurrentProject = state.currentProject?.id === id ? null : state.currentProject;
+          
+          // Clear auto-save if deleting current project
+          if (state.currentProject?.id === id && autoSaveInterval) {
+            clearInterval(autoSaveInterval);
+            autoSaveInterval = null;
+          }
+          
+          return {
+            projects: newProjects,
+            currentProject: newCurrentProject,
+          };
+        });
       },
       
       loadProject: (id) => {
