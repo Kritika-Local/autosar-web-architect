@@ -12,14 +12,15 @@ import {
   FileCode,
   BarChart3,
   Clock,
-  Save
+  Save,
+  Download
 } from "lucide-react";
 import { useAutosarStore } from "@/store/autosarStore";
 import { useNavigate } from "react-router-dom";
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { currentProject, projects, saveProjectAsDraft, autoSave } = useAutosarStore();
+  const { currentProject, projects, saveProjectAsDraft, autoSave, exportArxml } = useAutosarStore();
 
   const stats = {
     totalProjects: projects.length,
@@ -35,6 +36,10 @@ const Dashboard = () => {
 
   const handleAutoSave = () => {
     autoSave();
+  };
+
+  const handleExportArxml = () => {
+    exportArxml();
   };
 
   return (
@@ -76,7 +81,10 @@ const Dashboard = () => {
             <CardDescription>Create a new AUTOSAR project</CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
-            <Button className="w-full autosar-button">
+            <Button className="w-full autosar-button" onClick={(e) => {
+              e.stopPropagation();
+              navigate('/projects');
+            }}>
               Create Project
             </Button>
           </CardContent>
@@ -92,7 +100,10 @@ const Dashboard = () => {
             <CardDescription>Load an existing project</CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
-            <Button variant="outline" className="w-full">
+            <Button variant="outline" className="w-full" onClick={(e) => {
+              e.stopPropagation();
+              navigate('/projects');
+            }}>
               Browse Projects
             </Button>
           </CardContent>
@@ -108,7 +119,10 @@ const Dashboard = () => {
             <CardDescription>Manage application data types</CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
-            <Button variant="outline" className="w-full">
+            <Button variant="outline" className="w-full" onClick={(e) => {
+              e.stopPropagation();
+              navigate('/data-types');
+            }}>
               View Data Types
             </Button>
           </CardContent>
@@ -124,7 +138,10 @@ const Dashboard = () => {
             <CardDescription>Design component interfaces</CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
-            <Button variant="outline" className="w-full">
+            <Button variant="outline" className="w-full" onClick={(e) => {
+              e.stopPropagation();
+              navigate('/port-editor');
+            }}>
               View Interfaces
             </Button>
           </CardContent>
@@ -219,10 +236,10 @@ const Dashboard = () => {
                   Manual Save
                 </Button>
                 <Button 
-                  onClick={() => {/* TODO: Implement ARXML export */}}
+                  onClick={handleExportArxml}
                   className="w-full autosar-button"
                 >
-                  <FileCode className="h-4 w-4 mr-2" />
+                  <Download className="h-4 w-4 mr-2" />
                   Export ARXML
                 </Button>
               </div>
