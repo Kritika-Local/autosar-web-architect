@@ -1,3 +1,4 @@
+
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -1196,14 +1197,23 @@ export const useAutosarStore = create<AutosarStore>()(
     }),
     {
       name: 'autosar-storage',
-      // Fixed persistence configuration with proper types
+      // Fixed persistence configuration with proper Zustand types
       storage: {
         getItem: (name: string) => {
-          const value = localStorage.getItem(name);
-          return value;
+          try {
+            const value = localStorage.getItem(name);
+            return value ? JSON.parse(value) : null;
+          } catch (error) {
+            console.error('Failed to parse stored data:', error);
+            return null;
+          }
         },
-        setItem: (name: string, value: string) => {
-          localStorage.setItem(name, value);
+        setItem: (name: string, value: any) => {
+          try {
+            localStorage.setItem(name, JSON.stringify(value));
+          } catch (error) {
+            console.error('Failed to store data:', error);
+          }
         },
         removeItem: (name: string) => {
           localStorage.removeItem(name);
