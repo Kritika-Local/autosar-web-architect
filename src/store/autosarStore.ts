@@ -158,6 +158,7 @@ interface AutosarStore {
   addAccessPoint: (runnableId: string, accessPoint: Omit<AccessPoint, 'id'>) => void;
   updateAccessPoint: (accessPointId: string, updates: Partial<AccessPoint>) => void;
   removeAccessPoint: (runnableId: string, accessPointId: string) => void;
+  deleteAccessPoint: (runnableId: string, accessPointId: string) => void;
   
   // SWC Connection management
   createConnection: (connection: Omit<SWCConnection, 'id'>) => void;
@@ -177,6 +178,9 @@ interface AutosarStore {
   generateDataTypesArxml: (project: Project) => string;
   generatePortInterfacesArxml: (project: Project) => string;
   generateTopologyArxml: (project: Project) => string;
+  generateConstantsArxml: (project: Project) => string;
+  generatePackagesArxml: (project: Project) => string;
+  generateConnectionsArxml: (project: Project) => string;
   
   // Auto-generate names
   generateAccessPointName: (swcName: string, runnableName: string, accessType: 'iRead' | 'iWrite' | 'iCall') => string;
@@ -193,6 +197,7 @@ export const useAutosarStore = create<AutosarStore>()(
       currentProject: null,
       projects: [],
       
+      // Project management
       createProject: (projectData: Omit<Project, 'id' | 'createdAt' | 'lastModified' | 'isDraft' | 'autoSaveEnabled'>) => {
         const newProject: Project = {
           ...projectData,
@@ -606,6 +611,22 @@ export const useAutosarStore = create<AutosarStore>()(
         }));
       },
       
+      deleteAccessPoint: (runnableId: string, accessPointId: string) => {
+        set((state) => ({
+          currentProject: state.currentProject ? {
+            ...state.currentProject,
+            swcs: state.currentProject.swcs.map((swc) => ({
+              ...swc,
+              runnables: swc.runnables.map((runnable) => ({
+                ...runnable,
+                accessPoints: runnable.accessPoints.filter((ap) => ap.id !== accessPointId),
+              })),
+            })),
+            lastModified: new Date().toISOString(),
+          } : null,
+        }));
+      },
+      
       createConnection: (connectionData) => {
         const connection: SWCConnection = { ...connectionData, id: generateUUID() };
         set((state) => ({
@@ -721,7 +742,7 @@ export const useAutosarStore = create<AutosarStore>()(
         }
       },
       
-      generateAccessPointName: (swcName, runnableName, accessType) => {
+      generateAccessPointName: (swcName: string, runnableName: string, accessType: 'iRead' | 'iWrite' | 'iCall') => {
         return `${accessType}_${swcName}_${runnableName}`;
       },
       
