@@ -59,7 +59,7 @@ export function AppSidebar() {
         </div>
 
         {/* Main Navigation */}
-        <SidebarGroup open={isMainExpanded}>
+        <SidebarGroup>
           <SidebarGroupLabel>Main</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -78,7 +78,7 @@ export function AppSidebar() {
         </SidebarGroup>
 
         {/* Design Tools */}
-        <SidebarGroup open={isDesignExpanded}>
+        <SidebarGroup>
           <SidebarGroupLabel>Design Tools</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -98,7 +98,7 @@ export function AppSidebar() {
 
         {/* Recent Projects */}
         {projects.length > 0 && (
-          <SidebarGroup open={recentProjectsOpen} onOpenChange={setRecentProjectsOpen}>
+          <SidebarGroup>
             <SidebarGroupLabel>Recent Projects</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>

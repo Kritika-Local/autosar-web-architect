@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { Cable, Plus, ArrowDown, ArrowUp, Edit, Trash2, Settings } from "lucide-react";
-import { useAutosarStore, Interface } from "@/store/autosarStore";
+import { useAutosarStore, Interface, DataElement } from "@/store/autosarStore";
 import { useSearchParams } from "react-router-dom";
 
 const PortEditor = () => {
@@ -89,10 +88,19 @@ const PortEditor = () => {
       return;
     }
 
+    // Convert simple data elements to full DataElement objects
+    const fullDataElements: DataElement[] = dataElements.map(element => ({
+      id: crypto.randomUUID(),
+      name: element.name,
+      applicationDataTypeRef: element.dataTypeRef,
+      category: 'primitive',
+      description: '',
+    }));
+
     createInterface({
       name: interfaceName,
       type: interfaceType,
-      ...(interfaceType === "SenderReceiver" && { dataElements }),
+      ...(interfaceType === "SenderReceiver" && { dataElements: fullDataElements }),
     });
 
     toast({

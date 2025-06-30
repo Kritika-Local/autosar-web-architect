@@ -22,13 +22,27 @@ function App() {
       <Router>
         <Routes>
           <Route path="/" element={<Index />} />
-          <Route path="/dashboard" element={<AppLayout><Dashboard /></AppLayout>} />
-          <Route path="/projects" element={<AppLayout><ProjectManager /></AppLayout>} />
-          <Route path="/swc-builder" element={<AppLayout><SWCBuilder /></AppLayout>} />
-          <Route path="/port-editor" element={<AppLayout><PortEditor /></AppLayout>} />
-          <Route path="/data-types" element={<AppLayout><DataTypeEditor /></AppLayout>} />
-          <Route path="/data-element-editor" element={<AppLayout><DataElementEditor /></AppLayout>} />
-          <Route path="/behavior-designer" element={<AppLayout><BehaviorDesigner /></AppLayout>} />
+          <Route path="/dashboard" element={<AppLayout />}>
+            <Route index element={<Dashboard />} />
+          </Route>
+          <Route path="/projects" element={<AppLayout />}>
+            <Route index element={<ProjectManager />} />
+          </Route>
+          <Route path="/swc-builder" element={<AppLayout />}>
+            <Route index element={<SWCBuilder />} />
+          </Route>
+          <Route path="/port-editor" element={<AppLayout />}>
+            <Route index element={<PortEditor />} />
+          </Route>
+          <Route path="/data-types" element={<AppLayout />}>
+            <Route index element={<DataTypeEditor />} />
+          </Route>
+          <Route path="/data-element-editor" element={<AppLayout />}>
+            <Route index element={<DataElementEditor />} />
+          </Route>
+          <Route path="/behavior-designer" element={<AppLayout />}>
+            <Route index element={<BehaviorDesigner />} />
+          </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Router>
