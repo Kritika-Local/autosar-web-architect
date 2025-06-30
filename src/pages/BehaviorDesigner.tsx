@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/components/ui/use-toast";
-import { Settings, Plus, Edit, Trash2, Play, Database, Eye, PenTool } from "lucide-react";
+import { Settings, Plus, Edit, Trash2, Play, Database, Eye, PenTool, Phone, Clock, Zap } from "lucide-react";
 import { useAutosarStore, Runnable, AccessPoint } from "@/store/autosarStore";
 
 const BehaviorDesigner = () => {
@@ -31,23 +31,27 @@ const BehaviorDesigner = () => {
   
   // Runnable form states
   const [runnableName, setRunnableName] = useState("");
+  const [runnableType, setRunnableType] = useState<"init" | "periodic" | "event">("periodic");
+  const [period, setPeriod] = useState<number>(100);
   const [canBeInvokedConcurrently, setCanBeInvokedConcurrently] = useState(false);
   
   // Access point form states
   const [accessPointName, setAccessPointName] = useState("");
-  const [accessPointType, setAccessPointType] = useState<"read" | "write">("read");
+  const [accessPointType, setAccessPointType] = useState<"iRead" | "iWrite" | "iCall">("iRead");
   const [accessType, setAccessType] = useState<"implicit" | "explicit">("implicit");
   const [selectedPort, setSelectedPort] = useState("");
   const [selectedDataElement, setSelectedDataElement] = useState("");
 
   const resetRunnableForm = () => {
     setRunnableName("");
+    setRunnableType("periodic");
+    setPeriod(100);
     setCanBeInvokedConcurrently(false);
   };
 
   const resetAccessPointForm = () => {
     setAccessPointName("");
-    setAccessPointType("read");
+    setAccessPointType("iRead");
     setAccessType("implicit");
     setSelectedPort("");
     setSelectedDataElement("");
@@ -63,16 +67,20 @@ const BehaviorDesigner = () => {
       return;
     }
 
-    createRunnable({
+    const runnableData = {
       name: runnableName,
       swcId: selectedSWC,
+      runnableType,
       canBeInvokedConcurrently,
       events: [],
-    });
+      ...(runnableType === "periodic" && { period })
+    };
+
+    createRunnable(runnableData);
 
     toast({
       title: "Runnable Created",
-      description: `${runnableName} has been created successfully`,
+      description: `${runnableName} (${runnableType}) has been created successfully`,
     });
 
     resetRunnableForm();
@@ -99,7 +107,7 @@ const BehaviorDesigner = () => {
 
     toast({
       title: "Access Point Added",
-      description: `${accessPointName} has been added to ${selectedRunnable.name}`,
+      description: `${accessPointName} (${accessPointType}) has been added to ${selectedRunnable.name}`,
     });
 
     resetAccessPointForm();
@@ -120,6 +128,24 @@ const BehaviorDesigner = () => {
       title: "Access Point Removed",
       description: "Access point has been removed",
     });
+  };
+
+  const getRunnableIcon = (type: string) => {
+    switch (type) {
+      case 'init': return Zap;
+      case 'periodic': return Clock;
+      case 'event': return Play;
+      default: return Play;
+    }
+  };
+
+  const getAccessPointIcon = (type: string) => {
+    switch (type) {
+      case 'iRead': return Eye;
+      case 'iWrite': return PenTool;
+      case 'iCall': return Phone;
+      default: return Database;
+    }
   };
 
   if (!currentProject) {
@@ -163,7 +189,7 @@ const BehaviorDesigner = () => {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Internal Behavior Designer</h1>
           <p className="text-muted-foreground mt-1">
-            Configure runnables, events, and access points
+            Configure runnables, events, and access points with AUTOSAR compliance
           </p>
         </div>
         <div className="flex gap-2">
@@ -183,7 +209,7 @@ const BehaviorDesigner = () => {
                   <Label htmlFor="ap-name">Access Point Name *</Label>
                   <Input
                     id="ap-name"
-                    placeholder="e.g., AP_EngineSpeed_Read"
+                    placeholder="e.g., AP_EngineSpeed_iRead"
                     value={accessPointName}
                     onChange={(e) => setAccessPointName(e.target.value)}
                   />
@@ -192,13 +218,14 @@ const BehaviorDesigner = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="ap-type">Access Type *</Label>
-                    <Select value={accessPointType} onValueChange={(value: "read" | "write") => setAccessPointType(value)}>
+                    <Select value={accessPointType} onValueChange={(value: "iRead" | "iWrite" | "iCall") => setAccessPointType(value)}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="read">Read Access</SelectItem>
-                        <SelectItem value="write">Write Access</SelectItem>
+                        <SelectItem value="iRead">iRead (Data Read)</SelectItem>
+                        <SelectItem value="iWrite">iWrite (Data Write)</SelectItem>
+                        <SelectItem value="iCall">iCall (Operation Call)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -243,7 +270,7 @@ const BehaviorDesigner = () => {
                         .filter(de => de.portId === selectedPort)
                         .map((de, index) => (
                           <SelectItem key={index} value={de.element.name}>
-                            {de.element.name} ({de.element.dataTypeRef})
+                            {de.element.name} ({de.element.applicationDataTypeRef})
                           </SelectItem>
                         ))}
                     </SelectContent>
@@ -301,6 +328,33 @@ const BehaviorDesigner = () => {
                   />
                 </div>
 
+                <div>
+                  <Label htmlFor="runnable-type">Runnable Type *</Label>
+                  <Select value={runnableType} onValueChange={(value: "init" | "periodic" | "event") => setRunnableType(value)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="init">Init Runnable</SelectItem>
+                      <SelectItem value="periodic">Periodic Runnable</SelectItem>
+                      <SelectItem value="event">Event-based Runnable</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {runnableType === "periodic" && (
+                  <div>
+                    <Label htmlFor="period">Period (ms) *</Label>
+                    <Input
+                      id="period"
+                      type="number"
+                      placeholder="100"
+                      value={period}
+                      onChange={(e) => setPeriod(parseInt(e.target.value) || 100)}
+                    />
+                  </div>
+                )}
+
                 <div className="flex items-center space-x-2">
                   <Checkbox 
                     id="concurrent"
@@ -355,82 +409,95 @@ const BehaviorDesigner = () => {
 
           {/* Runnables List */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {currentSWC.runnables.map((runnable) => (
-              <Card key={runnable.id} className="autosar-card">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <Play className="h-5 w-5" />
-                        {runnable.name}
-                      </CardTitle>
-                      <div className="flex gap-2 mt-1">
-                        <Badge variant="outline">
-                          {runnable.canBeInvokedConcurrently ? "Concurrent" : "Sequential"}
-                        </Badge>
+            {currentSWC.runnables.map((runnable) => {
+              const IconComponent = getRunnableIcon(runnable.runnableType);
+              return (
+                <Card key={runnable.id} className="autosar-card">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <IconComponent className="h-5 w-5" />
+                          {runnable.name}
+                        </CardTitle>
+                        <div className="flex gap-2 mt-1">
+                          <Badge variant="outline" className="capitalize">
+                            {runnable.runnableType}
+                          </Badge>
+                          {runnable.period && (
+                            <Badge variant="secondary">
+                              {runnable.period}ms
+                            </Badge>
+                          )}
+                          <Badge variant={runnable.canBeInvokedConcurrently ? "default" : "secondary"}>
+                            {runnable.canBeInvokedConcurrently ? "Concurrent" : "Sequential"}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => {
+                            setSelectedRunnable(runnable);
+                            setIsAccessPointDialogOpen(true);
+                          }}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => handleDeleteRunnable(runnable.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex gap-1">
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => {
-                          setSelectedRunnable(runnable);
-                          setIsAccessPointDialogOpen(true);
-                        }}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => handleDeleteRunnable(runnable.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Access Points:</span>
-                      <span className="font-medium">{runnable.accessPoints.length}</span>
-                    </div>
-                    
-                    {runnable.accessPoints.length > 0 && (
-                      <div className="space-y-2">
-                        <Label className="text-sm">Access Points:</Label>
-                        {runnable.accessPoints.map((ap) => (
-                          <div key={ap.id} className="flex items-center justify-between p-2 rounded border border-border">
-                            <div className="flex items-center gap-2">
-                              {ap.type === "read" ? (
-                                <Eye className="h-4 w-4 text-blue-500" />
-                              ) : (
-                                <PenTool className="h-4 w-4 text-green-500" />
-                              )}
-                              <div>
-                                <p className="text-sm font-medium">{ap.name}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {ap.type} • {ap.access} • {ap.dataElementRef}
-                                </p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Access Points:</span>
+                        <span className="font-medium">{runnable.accessPoints.length}</span>
+                      </div>
+                      
+                      {runnable.accessPoints.length > 0 && (
+                        <div className="space-y-2">
+                          <Label className="text-sm">Access Points:</Label>
+                          {runnable.accessPoints.map((ap) => {
+                            const APIcon = getAccessPointIcon(ap.type);
+                            return (
+                              <div key={ap.id} className="flex items-center justify-between p-2 rounded border border-border">
+                                <div className="flex items-center gap-2">
+                                  <APIcon className={`h-4 w-4 ${
+                                    ap.type === 'iRead' ? 'text-blue-500' : 
+                                    ap.type === 'iWrite' ? 'text-green-500' : 'text-purple-500'
+                                  }`} />
+                                  <div>
+                                    <p className="text-sm font-medium">{ap.name}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {ap.type} • {ap.access} • {ap.dataElementRef}
+                                    </p>
+                                  </div>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleRemoveAccessPoint(runnable.id, ap.id)}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
                               </div>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleRemoveAccessPoint(runnable.id, ap.id)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
 
           {currentSWC.runnables.length === 0 && (

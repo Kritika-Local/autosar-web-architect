@@ -2,240 +2,312 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { 
   Box, 
-  Cable, 
+  Plus, 
+  FolderOpen, 
   Database, 
+  Cable, 
   Settings, 
-  FileCode, 
-  Download,
-  Plus,
+  FileCode,
+  BarChart3,
   Clock,
-  CheckCircle,
-  AlertCircle
+  Save
 } from "lucide-react";
+import { useAutosarStore } from "@/store/autosarStore";
+import { useNavigate } from "react-router-dom";
 
 const Dashboard = () => {
-  const recentProjects = [
-    {
-      name: "Engine Control Unit",
-      type: "Application SWC",
-      status: "In Progress",
-      lastModified: "2 hours ago",
-      progress: 75,
-      components: 8,
-      ports: 24
-    },
-    {
-      name: "Brake System Controller",
-      type: "Service SWC",
-      status: "Completed",
-      lastModified: "1 day ago",
-      progress: 100,
-      components: 5,
-      ports: 16
-    },
-    {
-      name: "Climate Control",
-      type: "Composite SWC",
-      status: "Draft",
-      lastModified: "3 days ago",
-      progress: 25,
-      components: 12,
-      ports: 36
-    }
-  ];
+  const navigate = useNavigate();
+  const { currentProject, projects, saveProjectAsDraft, autoSave } = useAutosarStore();
 
-  const quickActions = [
-    {
-      title: "Create New SWC",
-      description: "Start building a new software component",
-      icon: Box,
-      color: "bg-blue-500",
-      href: "/swc-builder"
-    },
-    {
-      title: "Design Interfaces",
-      description: "Create and manage port interfaces",
-      icon: Cable,
-      color: "bg-green-500",
-      href: "/port-editor"
-    },
-    {
-      title: "Define Data Types",
-      description: "Configure application data types",
-      icon: Database,
-      color: "bg-purple-500",
-      href: "/data-types"
-    },
-    {
-      title: "Configure Behavior",
-      description: "Set up runnables and events",
-      icon: Settings,
-      color: "bg-orange-500",
-      href: "/behavior"
-    }
-  ];
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "Completed":
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case "In Progress":
-        return <Clock className="h-4 w-4 text-blue-500" />;
-      default:
-        return <AlertCircle className="h-4 w-4 text-yellow-500" />;
-    }
+  const stats = {
+    totalProjects: projects.length,
+    totalSWCs: currentProject?.swcs.length || 0,
+    totalInterfaces: currentProject?.interfaces.length || 0,
+    totalDataTypes: currentProject?.dataTypes.length || 0,
+    totalDataElements: currentProject?.dataElements.length || 0,
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Completed":
-        return "bg-green-500/10 text-green-500";
-      case "In Progress":
-        return "bg-blue-500/10 text-blue-500";
-      default:
-        return "bg-yellow-500/10 text-yellow-500";
-    }
+  const handleSaveDraft = () => {
+    saveProjectAsDraft();
+  };
+
+  const handleAutoSave = () => {
+    autoSave();
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-8 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            Overview of your AUTOSAR software components and recent activity
-          </p>
-        </div>
-        <Button className="autosar-button flex items-center gap-2">
-          <Plus className="h-4 w-4" />
-          New Project
-        </Button>
+      <div className="text-center py-8">
+        <h1 className="text-4xl font-bold text-foreground mb-4">
+          AUTOSAR SWC Designer
+        </h1>
+        <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+          Professional AUTOSAR Software Component modeling tool inspired by Vector DaVinci Developer
+        </p>
+        {currentProject && (
+          <div className="mt-4 flex items-center justify-center gap-4">
+            <Badge variant="outline" className="text-sm px-3 py-1">
+              Current Project: {currentProject.name}
+            </Badge>
+            <Badge variant="secondary" className="text-sm px-3 py-1">
+              AUTOSAR {currentProject.autosarVersion}
+            </Badge>
+            {currentProject.isDraft && (
+              <Badge variant="destructive" className="text-sm px-3 py-1">
+                Draft
+              </Badge>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {quickActions.map((action, index) => (
-          <Card key={index} className="autosar-card hover:shadow-xl transition-all duration-300 cursor-pointer group">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <div className={`w-12 h-12 ${action.color} rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform`}>
-                  <action.icon className="h-6 w-6 text-white" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card 
+          className="autosar-card hover:shadow-lg transition-all duration-300 cursor-pointer"
+          onClick={() => navigate('/projects')}
+        >
+          <CardHeader className="text-center pb-3">
+            <Plus className="h-12 w-12 mx-auto mb-3 text-autosar-primary" />
+            <CardTitle className="text-lg">New Project</CardTitle>
+            <CardDescription>Create a new AUTOSAR project</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <Button className="w-full autosar-button">
+              Create Project
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card 
+          className="autosar-card hover:shadow-lg transition-all duration-300 cursor-pointer"
+          onClick={() => navigate('/projects')}
+        >
+          <CardHeader className="text-center pb-3">
+            <FolderOpen className="h-12 w-12 mx-auto mb-3 text-autosar-secondary" />
+            <CardTitle className="text-lg">Open Project</CardTitle>
+            <CardDescription>Load an existing project</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <Button variant="outline" className="w-full">
+              Browse Projects
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card 
+          className="autosar-card hover:shadow-lg transition-all duration-300 cursor-pointer"
+          onClick={() => navigate('/data-types')}
+        >
+          <CardHeader className="text-center pb-3">
+            <Database className="h-12 w-12 mx-auto mb-3 text-blue-500" />
+            <CardTitle className="text-lg">Data Types</CardTitle>
+            <CardDescription>Manage application data types</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <Button variant="outline" className="w-full">
+              View Data Types
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card 
+          className="autosar-card hover:shadow-lg transition-all duration-300 cursor-pointer"
+          onClick={() => navigate('/port-editor')}
+        >
+          <CardHeader className="text-center pb-3">
+            <Cable className="h-12 w-12 mx-auto mb-3 text-green-500" />
+            <CardTitle className="text-lg">Interfaces</CardTitle>
+            <CardDescription>Design component interfaces</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <Button variant="outline" className="w-full">
+              View Interfaces
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Current Project Overview */}
+      {currentProject && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="autosar-card lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Project Overview
+              </CardTitle>
+              <CardDescription>
+                Current project statistics and quick access
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-autosar-primary">{stats.totalSWCs}</div>
+                  <div className="text-sm text-muted-foreground">SWCs</div>
                 </div>
-                <div>
-                  <h3 className="font-semibold text-foreground">{action.title}</h3>
-                  <p className="text-sm text-muted-foreground">{action.description}</p>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-autosar-secondary">{stats.totalInterfaces}</div>
+                  <div className="text-sm text-muted-foreground">Interfaces</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-500">{stats.totalDataTypes}</div>
+                  <div className="text-sm text-muted-foreground">Data Types</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-500">{stats.totalDataElements}</div>
+                  <div className="text-sm text-muted-foreground">Data Elements</div>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <Button 
+                  onClick={() => navigate('/swc-builder')}
+                  className="autosar-button"
+                >
+                  <Box className="h-4 w-4 mr-2" />
+                  SWC Builder
+                </Button>
+                <Button 
+                  onClick={() => navigate('/behavior-designer')}
+                  variant="outline"
+                >
+                  <Settings className="h-4 w-4 mr-2" />
+                  Behavior Designer
+                </Button>
+                <Button 
+                  onClick={() => navigate('/data-element-editor')}
+                  variant="outline"
+                >
+                  <Database className="h-4 w-4 mr-2" />
+                  Data Elements
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="autosar-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Save className="h-5 w-5" />
+                Project Actions
+              </CardTitle>
+              <CardDescription>
+                Save and manage your project
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Button 
+                  onClick={handleSaveDraft}
+                  variant="outline" 
+                  className="w-full"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  Save as Draft
+                </Button>
+                <Button 
+                  onClick={handleAutoSave}
+                  variant="outline" 
+                  className="w-full"
+                >
+                  <Clock className="h-4 w-4 mr-2" />
+                  Manual Save
+                </Button>
+                <Button 
+                  onClick={() => {/* TODO: Implement ARXML export */}}
+                  className="w-full autosar-button"
+                >
+                  <FileCode className="h-4 w-4 mr-2" />
+                  Export ARXML
+                </Button>
+              </div>
+              
+              <div className="pt-4 border-t border-border">
+                <div className="text-sm text-muted-foreground">
+                  <p>Last modified: {new Date(currentProject.lastModified).toLocaleString()}</p>
+                  <p>AUTOSAR Version: {currentProject.autosarVersion}</p>
+                  <p>Auto-save: {currentProject.autoSaveEnabled ? 'Enabled' : 'Disabled'}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-        ))}
-      </div>
+        </div>
+      )}
 
-      {/* Recent Projects */}
+      {/* Getting Started */}
+      {!currentProject && (
+        <Card className="autosar-card">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl">Get Started</CardTitle>
+            <CardDescription>
+              Create your first AUTOSAR project or import existing components
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-center space-y-4">
+            <div className="flex justify-center gap-4">
+              <Button 
+                onClick={() => navigate('/projects')}
+                className="autosar-button"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Create New Project
+              </Button>
+              <Button 
+                onClick={() => navigate('/projects')}
+                variant="outline"
+              >
+                <FolderOpen className="h-4 w-4 mr-2" />
+                Import ARXML
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              Start by creating a new project to define your AUTOSAR software components, 
+              interfaces, and data types.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Workspace Stats */}
       <Card className="autosar-card">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileCode className="h-5 w-5" />
-            Recent Projects
-          </CardTitle>
+          <CardTitle>Workspace Statistics</CardTitle>
           <CardDescription>
-            Continue working on your software components
+            Overview of all projects in your workspace
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {recentProjects.map((project, index) => (
-              <div key={index} className="flex items-center justify-between p-4 rounded-lg border border-border hover:bg-accent/50 transition-colors">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 autosar-gradient rounded-lg flex items-center justify-center">
-                    <Box className="h-5 w-5 text-white" />
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-foreground">{project.name}</h4>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant="outline" className="text-xs">
-                        {project.type}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {project.components} components • {project.ports} ports
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <div className="flex items-center gap-2 mb-1">
-                      {getStatusIcon(project.status)}
-                      <Badge className={getStatusColor(project.status)}>
-                        {project.status}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Progress value={project.progress} className="w-20" />
-                      <span className="text-sm text-muted-foreground">{project.progress}%</span>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-muted-foreground">{project.lastModified}</p>
-                    <Button variant="ghost" size="sm" className="mt-1">
-                      Open
-                    </Button>
-                  </div>
-                </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="text-center">
+              <div className="text-3xl font-bold text-autosar-primary mb-2">{stats.totalProjects}</div>
+              <div className="text-sm text-muted-foreground">Total Projects</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-autosar-secondary mb-2">
+                {projects.filter(p => p.isDraft).length}
               </div>
-            ))}
+              <div className="text-sm text-muted-foreground">Draft Projects</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-blue-500 mb-2">
+                {projects.filter(p => p.autosarVersion === '4.2.2').length}
+              </div>
+              <div className="text-sm text-muted-foreground">AUTOSAR 4.2.2</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-green-500 mb-2">
+                {projects.filter(p => p.autosarVersion === '4.3.1').length}
+              </div>
+              <div className="text-sm text-muted-foreground">AUTOSAR 4.3.1</div>
+            </div>
           </div>
         </CardContent>
       </Card>
-
-      {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="autosar-card">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center">
-                <Box className="h-6 w-6 text-blue-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">12</p>
-                <p className="text-sm text-muted-foreground">Total SWCs</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card className="autosar-card">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center">
-                <Cable className="h-6 w-6 text-green-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">48</p>
-                <p className="text-sm text-muted-foreground">Interfaces</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card className="autosar-card">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-purple-500/10 rounded-lg flex items-center justify-center">
-                <Download className="h-6 w-6 text-purple-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">3</p>
-                <p className="text-sm text-muted-foreground">ARXML Exports</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 };

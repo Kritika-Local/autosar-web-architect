@@ -2,6 +2,18 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+export interface DataElement {
+  id: string;
+  name: string;
+  applicationDataTypeRef: string;
+  category?: string;
+  description?: string;
+  swDataDefProps?: {
+    baseTypeRef?: string;
+    implementationDataTypeRef?: string;
+  };
+}
+
 export interface DataType {
   id: string;
   name: string;
@@ -10,14 +22,27 @@ export interface DataType {
   arraySize?: number;
   elements?: { name: string; type: string; }[];
   description?: string;
+  // AUTOSAR-compliant fields
+  applicationDataType?: {
+    category: 'PRIMITIVE' | 'ARRAY' | 'RECORD';
+    swDataDefProps?: string;
+  };
+  implementationDataType?: {
+    category: 'PRIMITIVE' | 'ARRAY' | 'RECORD';
+    baseTypeEncoding?: string;
+    size?: number;
+  };
 }
 
 export interface Interface {
   id: string;
   name: string;
   type: 'SenderReceiver' | 'ClientServer' | 'ModeSwitch' | 'Parameter' | 'Trigger';
-  dataElements?: { name: string; dataTypeRef: string; }[];
-  operations?: { name: string; arguments: { name: string; direction: 'IN' | 'OUT' | 'INOUT'; type: string; }[]; }[];
+  dataElements?: DataElement[];
+  operations?: { 
+    name: string; 
+    arguments: { name: string; direction: 'IN' | 'OUT' | 'INOUT'; type: string; }[]; 
+  }[];
 }
 
 export interface Port {
@@ -31,7 +56,7 @@ export interface Port {
 export interface AccessPoint {
   id: string;
   name: string;
-  type: 'read' | 'write';
+  type: 'iRead' | 'iWrite' | 'iCall';
   access: 'implicit' | 'explicit';
   portRef: string;
   dataElementRef: string;
@@ -41,6 +66,8 @@ export interface Runnable {
   id: string;
   name: string;
   swcId: string;
+  runnableType: 'init' | 'periodic' | 'event';
+  period?: number; // for periodic runnables in ms
   canBeInvokedConcurrently: boolean;
   accessPoints: AccessPoint[];
   events: string[];
@@ -66,8 +93,11 @@ export interface Project {
   swcs: SWC[];
   interfaces: Interface[];
   dataTypes: DataType[];
+  dataElements: DataElement[];
   createdAt: string;
   lastModified: string;
+  isDraft: boolean;
+  autoSaveEnabled: boolean;
 }
 
 interface AutosarStore {
@@ -75,9 +105,11 @@ interface AutosarStore {
   projects: Project[];
   
   // Project management
-  createProject: (project: Omit<Project, 'id' | 'createdAt' | 'lastModified'>) => void;
+  createProject: (project: Omit<Project, 'id' | 'createdAt' | 'lastModified' | 'isDraft' | 'autoSaveEnabled'>) => void;
   updateProject: (id: string, updates: Partial<Project>) => void;
   loadProject: (id: string) => void;
+  saveProjectAsDraft: () => void;
+  autoSave: () => void;
   importArxml: (file: File) => Promise<void>;
   
   // SWC management
@@ -100,6 +132,11 @@ interface AutosarStore {
   updateDataType: (id: string, updates: Partial<DataType>) => void;
   deleteDataType: (id: string) => void;
   
+  // Data element management
+  createDataElement: (dataElement: Omit<DataElement, 'id'>) => void;
+  updateDataElement: (id: string, updates: Partial<DataElement>) => void;
+  deleteDataElement: (id: string) => void;
+  
   // Runnable management
   createRunnable: (runnable: Omit<Runnable, 'id' | 'accessPoints'>) => void;
   updateRunnable: (id: string, updates: Partial<Runnable>) => void;
@@ -109,9 +146,15 @@ interface AutosarStore {
   addAccessPoint: (runnableId: string, accessPoint: Omit<AccessPoint, 'id'>) => void;
   updateAccessPoint: (runnableId: string, accessPointId: string, updates: Partial<AccessPoint>) => void;
   removeAccessPoint: (runnableId: string, accessPointId: string) => void;
+  
+  // ARXML export
+  exportArxml: () => void;
 }
 
 const generateUUID = () => crypto.randomUUID();
+
+// Auto-save functionality
+let autoSaveInterval: NodeJS.Timeout | null = null;
 
 export const useAutosarStore = create<AutosarStore>()(
   persist(
@@ -125,11 +168,20 @@ export const useAutosarStore = create<AutosarStore>()(
           id: generateUUID(),
           createdAt: new Date().toISOString(),
           lastModified: new Date().toISOString(),
+          isDraft: false,
+          autoSaveEnabled: true,
+          dataElements: [],
         };
         set((state) => ({
           projects: [...state.projects, project],
           currentProject: project,
         }));
+        
+        // Start auto-save
+        if (autoSaveInterval) clearInterval(autoSaveInterval);
+        autoSaveInterval = setInterval(() => {
+          get().autoSave();
+        }, 60000); // Auto-save every 60 seconds
       },
       
       updateProject: (id, updates) => {
@@ -147,11 +199,37 @@ export const useAutosarStore = create<AutosarStore>()(
         const project = get().projects.find((p) => p.id === id);
         if (project) {
           set({ currentProject: project });
+          
+          // Start auto-save for loaded project
+          if (autoSaveInterval) clearInterval(autoSaveInterval);
+          if (project.autoSaveEnabled) {
+            autoSaveInterval = setInterval(() => {
+              get().autoSave();
+            }, 60000);
+          }
+        }
+      },
+      
+      saveProjectAsDraft: () => {
+        const currentProject = get().currentProject;
+        if (currentProject) {
+          get().updateProject(currentProject.id, { 
+            isDraft: true, 
+            lastModified: new Date().toISOString() 
+          });
+        }
+      },
+      
+      autoSave: () => {
+        const currentProject = get().currentProject;
+        if (currentProject && currentProject.autoSaveEnabled) {
+          get().updateProject(currentProject.id, { 
+            lastModified: new Date().toISOString() 
+          });
         }
       },
       
       importArxml: async (file: File) => {
-        // Placeholder for ARXML import functionality
         console.log('Importing ARXML file:', file.name);
         // TODO: Implement ARXML parsing
       },
@@ -238,7 +316,11 @@ export const useAutosarStore = create<AutosarStore>()(
       },
       
       createInterface: (interfaceData) => {
-        const interface_: Interface = { ...interfaceData, id: generateUUID() };
+        const interface_: Interface = { 
+          ...interfaceData, 
+          id: generateUUID(),
+          dataElements: interfaceData.dataElements || []
+        };
         set((state) => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
@@ -271,7 +353,24 @@ export const useAutosarStore = create<AutosarStore>()(
       },
       
       createDataType: (dataTypeData) => {
-        const dataType: DataType = { ...dataTypeData, id: generateUUID() };
+        const dataType: DataType = { 
+          ...dataTypeData, 
+          id: generateUUID(),
+          // Generate AUTOSAR-compliant application and implementation data types
+          applicationDataType: {
+            category: dataTypeData.category === 'primitive' ? 'PRIMITIVE' : 
+                     dataTypeData.category === 'array' ? 'ARRAY' : 'RECORD',
+            swDataDefProps: generateUUID(),
+          },
+          implementationDataType: {
+            category: dataTypeData.category === 'primitive' ? 'PRIMITIVE' : 
+                     dataTypeData.category === 'array' ? 'ARRAY' : 'RECORD',
+            baseTypeEncoding: dataTypeData.baseType === 'uint8' ? 'NONE' : 'IEEE754',
+            size: dataTypeData.baseType === 'uint8' ? 8 : 
+                  dataTypeData.baseType === 'uint16' ? 16 :
+                  dataTypeData.baseType === 'uint32' ? 32 : 64,
+          }
+        };
         set((state) => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
@@ -298,6 +397,39 @@ export const useAutosarStore = create<AutosarStore>()(
           currentProject: state.currentProject ? {
             ...state.currentProject,
             dataTypes: state.currentProject.dataTypes.filter((dt) => dt.id !== id),
+            lastModified: new Date().toISOString(),
+          } : null,
+        }));
+      },
+      
+      createDataElement: (dataElementData) => {
+        const dataElement: DataElement = { ...dataElementData, id: generateUUID() };
+        set((state) => ({
+          currentProject: state.currentProject ? {
+            ...state.currentProject,
+            dataElements: [...state.currentProject.dataElements, dataElement],
+            lastModified: new Date().toISOString(),
+          } : null,
+        }));
+      },
+      
+      updateDataElement: (id, updates) => {
+        set((state) => ({
+          currentProject: state.currentProject ? {
+            ...state.currentProject,
+            dataElements: state.currentProject.dataElements.map((de) =>
+              de.id === id ? { ...de, ...updates } : de
+            ),
+            lastModified: new Date().toISOString(),
+          } : null,
+        }));
+      },
+      
+      deleteDataElement: (id) => {
+        set((state) => ({
+          currentProject: state.currentProject ? {
+            ...state.currentProject,
+            dataElements: state.currentProject.dataElements.filter((de) => de.id !== id),
             lastModified: new Date().toISOString(),
           } : null,
         }));
@@ -409,6 +541,14 @@ export const useAutosarStore = create<AutosarStore>()(
             lastModified: new Date().toISOString(),
           } : null,
         }));
+      },
+      
+      exportArxml: () => {
+        const project = get().currentProject;
+        if (!project) return;
+        
+        console.log('Exporting ARXML for project:', project.name);
+        // TODO: Implement full ARXML export with AR-PACKAGES structure
       },
     }),
     {

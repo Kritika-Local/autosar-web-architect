@@ -1,5 +1,9 @@
 
+import { useState } from "react";
+import { Circle, Square, Plus, Folder, Database, Cable, Settings, Hash, BarChart3, FolderOpen } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
+import { useAutosarStore } from "@/store/autosarStore";
+
 import {
   Sidebar,
   SidebarContent,
@@ -9,66 +13,62 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { 
-  Home, 
-  FolderOpen, 
-  Box, 
-  Cable, 
-  Database, 
-  Settings,
-  FileCode,
-  Download
-} from "lucide-react";
 
-const navigationItems = [
-  { title: "Dashboard", url: "/", icon: Home },
-  { title: "Project Manager", url: "/projects", icon: FolderOpen },
-  { title: "SWC Builder", url: "/swc-builder", icon: Box },
-  { title: "Port & Interface", url: "/port-editor", icon: Cable },
-  { title: "Data Types", url: "/data-types", icon: Database },
-  { title: "Internal Behavior", url: "/behavior", icon: Settings },
+const mainItems = [
+  { title: "Dashboard", url: "/dashboard", icon: BarChart3 },
+  { title: "Projects", url: "/projects", icon: Folder },
 ];
 
-const toolsItems = [
-  { title: "ARXML Export", url: "/export", icon: Download },
-  { title: "Validation", url: "/validation", icon: FileCode },
+const designItems = [
+  { title: "SWC Builder", url: "/swc-builder", icon: Square },
+  { title: "Port & Interface Editor", url: "/port-editor", icon: Cable },
+  { title: "Data Types", url: "/data-types", icon: Database },
+  { title: "Data Elements", url: "/data-element-editor", icon: Hash },
+  { title: "Behavior Designer", url: "/behavior-designer", icon: Settings },
 ];
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const location = useLocation();
+  const { projects } = useAutosarStore();
+  const currentPath = location.pathname;
   
-  const isCollapsed = state === "collapsed";
-  
-  const isActive = (path: string) => {
-    if (path === "/") return location.pathname === "/";
-    return location.pathname.startsWith(path);
-  };
+  const [recentProjectsOpen, setRecentProjectsOpen] = useState(false);
 
-  const getNavClass = (path: string) => {
-    const active = isActive(path);
-    return active 
-      ? "bg-primary text-primary-foreground font-medium" 
-      : "hover:bg-accent hover:text-accent-foreground";
-  };
+  const isActive = (path: string) => currentPath === path;
+  const isMainExpanded = mainItems.some((item) => isActive(item.url));
+  const isDesignExpanded = designItems.some((item) => isActive(item.url));
+  
+  const getNavCls = ({ isActive }: { isActive: boolean }) =>
+    isActive ? "bg-muted text-primary font-medium" : "hover:bg-muted/50";
 
   return (
-    <Sidebar className={isCollapsed ? "w-16" : "w-64"} collapsible="icon">
-      <SidebarContent className="bg-sidebar">
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/70 font-medium">
-            {!isCollapsed && "Navigation"}
-          </SidebarGroupLabel>
+    <Sidebar
+      className={state === "collapsed" ? "w-14" : "w-60"}
+      collapsible="icon"
+    >
+      <SidebarContent>
+        {/* Header */}
+        <div className="p-4 border-b border-border">
+          {state !== "collapsed" && (
+            <h2 className="text-lg font-bold text-autosar-primary">AUTOSAR Designer</h2>
+          )}
+        </div>
+
+        {/* Main Navigation */}
+        <SidebarGroup open={isMainExpanded}>
+          <SidebarGroupLabel>Main</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navigationItems.map((item) => (
+              {mainItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
-                    <NavLink to={item.url} className={getNavClass(item.url)}>
-                      <item.icon className={`h-5 w-5 ${!isCollapsed ? 'mr-3' : ''}`} />
-                      {!isCollapsed && <span>{item.title}</span>}
+                    <NavLink to={item.url} end className={getNavCls}>
+                      <item.icon className="mr-2 h-4 w-4" />
+                      {state !== "collapsed" && <span>{item.title}</span>}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -77,18 +77,17 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/70 font-medium">
-            {!isCollapsed && "Tools"}
-          </SidebarGroupLabel>
+        {/* Design Tools */}
+        <SidebarGroup open={isDesignExpanded}>
+          <SidebarGroupLabel>Design Tools</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {toolsItems.map((item) => (
+              {designItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
-                    <NavLink to={item.url} className={getNavClass(item.url)}>
-                      <item.icon className={`h-5 w-5 ${!isCollapsed ? 'mr-3' : ''}`} />
-                      {!isCollapsed && <span>{item.title}</span>}
+                    <NavLink to={item.url} className={getNavCls}>
+                      <item.icon className="mr-2 h-4 w-4" />
+                      {state !== "collapsed" && <span>{item.title}</span>}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -96,6 +95,29 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {/* Recent Projects */}
+        {projects.length > 0 && (
+          <SidebarGroup open={recentProjectsOpen} onOpenChange={setRecentProjectsOpen}>
+            <SidebarGroupLabel>Recent Projects</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {projects.slice(0, 5).map((project) => (
+                  <SidebarMenuItem key={project.id}>
+                    <SidebarMenuButton asChild>
+                      <NavLink to={`/projects?load=${project.id}`} className={getNavCls}>
+                        <FolderOpen className="mr-2 h-4 w-4" />
+                        {state !== "collapsed" && (
+                          <span className="truncate">{project.name}</span>
+                        )}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
     </Sidebar>
   );
