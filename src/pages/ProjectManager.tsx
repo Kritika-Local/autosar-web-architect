@@ -4,6 +4,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { useToast } from "@/components/ui/use-toast";
 import { 
   Plus, 
   Search, 
@@ -13,7 +17,8 @@ import {
   Settings,
   Trash2,
   Copy,
-  Edit
+  Edit,
+  Upload
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -21,71 +26,111 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAutosarStore } from "@/store/autosarStore";
 
 const ProjectManager = () => {
+  const { toast } = useToast();
+  const { 
+    projects, 
+    currentProject,
+    createProject, 
+    loadProject,
+    importArxml 
+  } = useAutosarStore();
+  
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  
+  // Form states
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [autosarVersion, setAutosarVersion] = useState("4.3.1");
 
-  const projects = [
-    {
-      id: 1,
-      name: "Engine Control Unit",
-      description: "Main engine management system with fuel injection control",
-      type: "Application SWC",
-      autosarVersion: "4.3.1",
-      components: 8,
-      interfaces: 24,
-      lastModified: "2024-12-30",
-      status: "Active"
-    },
-    {
-      id: 2,
-      name: "Brake System Controller",
-      description: "ABS and ESP brake control system",
-      type: "Service SWC",
-      autosarVersion: "4.2.2",
-      components: 5,
-      interfaces: 16,
-      lastModified: "2024-12-29",
-      status: "Completed"
-    },
-    {
-      id: 3,
-      name: "Climate Control",
-      description: "HVAC system control with temperature regulation",
-      type: "Composite SWC",
-      autosarVersion: "4.3.1",
-      components: 12,
-      interfaces: 36,
-      lastModified: "2024-12-27",
-      status: "Draft"
-    },
-    {
-      id: 4,
-      name: "Door Control Module",
-      description: "Central door locking and window control",
-      type: "Application SWC",
-      autosarVersion: "4.3.1",
-      components: 6,
-      interfaces: 18,
-      lastModified: "2024-12-25",
-      status: "Active"
+  const handleCreateProject = () => {
+    if (!name) {
+      toast({
+        title: "Validation Error",
+        description: "Project name is required",
+        variant: "destructive",
+      });
+      return;
     }
-  ];
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Active":
-        return "bg-green-500/10 text-green-500";
-      case "Completed":
-        return "bg-blue-500/10 text-blue-500";
-      case "Draft":
-        return "bg-yellow-500/10 text-yellow-500";
-      default:
-        return "bg-gray-500/10 text-gray-500";
+    createProject({
+      name,
+      description,
+      autosarVersion,
+      swcs: [],
+      interfaces: [],
+      dataTypes: [],
+    });
+
+    toast({
+      title: "Project Created",
+      description: `${name} has been created successfully`,
+    });
+
+    // Reset form
+    setName("");
+    setDescription("");
+    setAutosarVersion("4.3.1");
+    setIsCreateDialogOpen(false);
+  };
+
+  const handleLoadProject = (projectId: string) => {
+    loadProject(projectId);
+    toast({
+      title: "Project Loaded",
+      description: "Project has been loaded successfully",
+    });
+  };
+
+  const handleImportArxml = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      try {
+        await importArxml(file);
+        toast({
+          title: "Import Successful",
+          description: `${file.name} has been imported`,
+        });
+        setIsImportDialogOpen(false);
+      } catch (error) {
+        toast({
+          title: "Import Failed",
+          description: "Failed to import ARXML file",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  const getStatusColor = (project: any) => {
+    const hasComponents = project.swcs?.length > 0;
+    const hasPorts = project.swcs?.some((swc: any) => swc.ports?.length > 0);
+    const hasInterfaces = project.interfaces?.length > 0;
+    
+    if (hasComponents && hasPorts && hasInterfaces) {
+      return "bg-green-500/10 text-green-500";
+    } else if (hasComponents) {
+      return "bg-yellow-500/10 text-yellow-500";
+    } else {
+      return "bg-gray-500/10 text-gray-500";
+    }
+  };
+
+  const getProjectStatus = (project: any) => {
+    const hasComponents = project.swcs?.length > 0;
+    const hasPorts = project.swcs?.some((swc: any) => swc.ports?.length > 0);
+    const hasInterfaces = project.interfaces?.length > 0;
+    
+    if (hasComponents && hasPorts && hasInterfaces) {
+      return "Active";
+    } else if (hasComponents) {
+      return "In Progress";
+    } else {
+      return "Draft";
     }
   };
 
@@ -104,64 +149,91 @@ const ProjectManager = () => {
             Manage your AUTOSAR SWC projects and configurations
           </p>
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="autosar-button flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              New Project
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Create New Project</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="name">Project Name</Label>
-                <Input id="name" placeholder="Enter project name" />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="description">Description</Label>
-                <Input id="description" placeholder="Brief description of the project" />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="type">Component Type</Label>
-                <Select>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select component type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="application">Application SWC</SelectItem>
-                    <SelectItem value="service">Service SWC</SelectItem>
-                    <SelectItem value="composite">Composite SWC</SelectItem>
-                    <SelectItem value="ecu-abstraction">ECU Abstraction</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="autosar-version">AUTOSAR Version</Label>
-                <Select>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select AUTOSAR version" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="4.3.1">AUTOSAR 4.3.1</SelectItem>
-                    <SelectItem value="4.2.2">AUTOSAR 4.2.2</SelectItem>
-                    <SelectItem value="4.4.0">AUTOSAR 4.4.0</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                Cancel
+        <div className="flex gap-2">
+          <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Upload className="h-4 w-4 mr-2" />
+                Import ARXML
               </Button>
-              <Button className="autosar-button" onClick={() => setIsCreateDialogOpen(false)}>
-                Create Project
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Import ARXML Workspace</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="arxml-import">Select ARXML or DBC Files</Label>
+                  <Input
+                    id="arxml-import"
+                    type="file"
+                    accept=".arxml,.xml,.dbc"
+                    onChange={handleImportArxml}
+                    className="mt-2"
+                  />
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Supported formats: .arxml, .xml (AUTOSAR), .dbc (CAN Database)
+                </p>
+              </div>
+            </DialogContent>
+          </Dialog>
+          
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="autosar-button flex items-center gap-2">
+                <Plus className="h-4 w-4" />
+                New Project
               </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Create New Project</DialogTitle>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="name">Project Name *</Label>
+                  <Input 
+                    id="name" 
+                    placeholder="Enter project name" 
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Input 
+                    id="description" 
+                    placeholder="Brief description of the project" 
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="autosar-version">AUTOSAR Version</Label>
+                  <Select value={autosarVersion} onValueChange={setAutosarVersion}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="4.3.1">AUTOSAR 4.3.1</SelectItem>
+                      <SelectItem value="4.2.2">AUTOSAR 4.2.2</SelectItem>
+                      <SelectItem value="4.4.0">AUTOSAR 4.4.0</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button className="autosar-button" onClick={handleCreateProject}>
+                  Create Project
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Search and Filters */}
@@ -184,13 +256,33 @@ const ProjectManager = () => {
               <SelectContent>
                 <SelectItem value="all">All Projects</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="in-progress">In Progress</SelectItem>
                 <SelectItem value="draft">Draft</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </CardContent>
       </Card>
+
+      {/* Current Project Indicator */}
+      {currentProject && (
+        <Card className="autosar-card border-primary/50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Box className="h-5 w-5 text-primary" />
+                <div>
+                  <p className="font-medium">Current Project: {currentProject.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {currentProject.swcs.length} SWCs • {currentProject.interfaces.length} Interfaces • {currentProject.dataTypes.length} Data Types
+                  </p>
+                </div>
+              </div>
+              <Badge className="bg-primary/10 text-primary">Active</Badge>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Projects Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -205,7 +297,7 @@ const ProjectManager = () => {
                   <div>
                     <CardTitle className="text-lg">{project.name}</CardTitle>
                     <Badge variant="outline" className="mt-1">
-                      {project.type}
+                      AUTOSAR {project.autosarVersion}
                     </Badge>
                   </div>
                 </div>
@@ -216,9 +308,9 @@ const ProjectManager = () => {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleLoadProject(project.id)}>
                       <Edit className="h-4 w-4 mr-2" />
-                      Edit
+                      Load Project
                     </DropdownMenuItem>
                     <DropdownMenuItem>
                       <Copy className="h-4 w-4 mr-2" />
@@ -238,43 +330,66 @@ const ProjectManager = () => {
             </CardHeader>
             <CardContent>
               <CardDescription className="mb-4">
-                {project.description}
+                {project.description || "No description provided"}
               </CardDescription>
               
               <div className="space-y-3">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Components:</span>
-                  <span className="font-medium">{project.components}</span>
+                  <span className="text-muted-foreground">SWCs:</span>
+                  <span className="font-medium">{project.swcs?.length || 0}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Interfaces:</span>
-                  <span className="font-medium">{project.interfaces}</span>
+                  <span className="font-medium">{project.interfaces?.length || 0}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">AUTOSAR:</span>
-                  <span className="font-medium">{project.autosarVersion}</span>
+                  <span className="text-muted-foreground">Data Types:</span>
+                  <span className="font-medium">{project.dataTypes?.length || 0}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Modified:</span>
                   <div className="flex items-center gap-1">
                     <Calendar className="h-3 w-3" />
-                    <span className="font-medium">{project.lastModified}</span>
+                    <span className="font-medium">
+                      {new Date(project.lastModified).toLocaleDateString()}
+                    </span>
                   </div>
                 </div>
               </div>
 
               <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
-                <Badge className={getStatusColor(project.status)}>
-                  {project.status}
+                <Badge className={getStatusColor(project)}>
+                  {getProjectStatus(project)}
                 </Badge>
-                <Button size="sm" className="autosar-button">
-                  Open
+                <Button 
+                  size="sm" 
+                  className="autosar-button"
+                  onClick={() => handleLoadProject(project.id)}
+                >
+                  {currentProject?.id === project.id ? "Current" : "Load"}
                 </Button>
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      {filteredProjects.length === 0 && (
+        <Card className="autosar-car">
+          <CardContent className="text-center py-12">
+            <Box className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p className="text-muted-foreground mb-4">
+              {projects.length === 0 ? "No projects created yet" : "No projects match your search"}
+            </p>
+            <Button 
+              onClick={() => setIsCreateDialogOpen(true)}
+              className="autosar-button"
+            >
+              Create Your First Project
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

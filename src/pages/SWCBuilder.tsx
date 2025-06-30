@@ -1,4 +1,5 @@
-import { useState } from "react";
+
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,23 +8,41 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { useToast } from "@/components/ui/use-toast";
 import { 
   Box, 
   Plus, 
   Settings, 
   FileCode, 
   Layers,
-  Info,
   CheckCircle,
-  AlertTriangle
+  AlertTriangle,
+  Trash2,
+  Edit
 } from "lucide-react";
+import { useAutosarStore } from "@/store/autosarStore";
 
 const SWCBuilder = () => {
+  const { toast } = useToast();
+  const { 
+    currentProject, 
+    createSWC, 
+    updateSWC, 
+    deleteSWC,
+    importArxml 
+  } = useAutosarStore();
+  
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [selectedSWC, setSelectedSWC] = useState<string | null>(null);
+  
+  // Form states
   const [swcName, setSwcName] = useState("");
   const [swcDescription, setSwcDescription] = useState("");
   const [swcCategory, setSwcCategory] = useState("");
   const [swcType, setSwcType] = useState("atomic");
-
+  
   const categories = [
     { value: "application", label: "Application SWC" },
     { value: "service", label: "Service SWC" },
@@ -32,18 +51,106 @@ const SWCBuilder = () => {
     { value: "sensor-actuator", label: "Sensor/Actuator SWC" },
   ];
 
-  const validationRules = [
-    { id: 1, rule: "SWC name must be unique", status: "valid", message: "Component name is available" },
-    { id: 2, rule: "Short name pattern compliance", status: "valid", message: "Follows AUTOSAR naming convention" },
-    { id: 3, rule: "Category selection required", status: swcCategory ? "valid" : "warning", message: swcCategory ? "Category selected" : "Please select a category" },
-    { id: 4, rule: "Implementation reference", status: "warning", message: "Implementation details not configured" },
-  ];
+  const handleCreateSWC = () => {
+    if (!swcName || !swcCategory) {
+      toast({
+        title: "Validation Error",
+        description: "SWC name and category are required",
+        variant: "destructive",
+      });
+      return;
+    }
 
-  const existingComponents = [
-    { name: "EngineController", category: "Application SWC", ports: 12, status: "Active" },
-    { name: "BrakeManager", category: "Service SWC", ports: 8, status: "Active" },
-    { name: "SensorInterface", category: "ECU Abstraction SWC", ports: 6, status: "Draft" },
-  ];
+    if (!currentProject) {
+      toast({
+        title: "No Project",
+        description: "Please create or load a project first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    createSWC({
+      name: swcName,
+      description: swcDescription,
+      category: swcCategory as any,
+      type: swcType as any,
+      autosarVersion: currentProject.autosarVersion,
+    });
+
+    toast({
+      title: "SWC Created",
+      description: `${swcName} has been created successfully`,
+    });
+
+    // Reset form
+    setSwcName("");
+    setSwcDescription("");
+    setSwcCategory("");
+    setSwcType("atomic");
+    setIsCreateDialogOpen(false);
+  };
+
+  const handleImportArxml = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      try {
+        await importArxml(file);
+        toast({
+          title: "Import Successful",
+          description: `${file.name} has been imported`,
+        });
+        setIsImportDialogOpen(false);
+      } catch (error) {
+        toast({
+          title: "Import Failed",
+          description: "Failed to import ARXML file",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  const handleDeleteSWC = (swcId: string) => {
+    deleteSWC(swcId);
+    toast({
+      title: "SWC Deleted",
+      description: "Software component has been deleted",
+    });
+  };
+
+  const getValidationStatus = (swc: any) => {
+    const rules = [
+      { valid: !!swc.name, message: "SWC name is required" },
+      { valid: !!swc.category, message: "Category selection required" },
+      { valid: swc.ports?.length > 0, message: "At least one port recommended" },
+    ];
+    
+    const validCount = rules.filter(r => r.valid).length;
+    return {
+      status: validCount === rules.length ? "valid" : validCount > 1 ? "warning" : "error",
+      validCount,
+      totalCount: rules.length,
+      rules
+    };
+  };
+
+  if (!currentProject) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="text-center py-12">
+          <Box className="h-16 w-16 mx-auto mb-4 opacity-50" />
+          <h2 className="text-2xl font-bold mb-2">No Project Loaded</h2>
+          <p className="text-muted-foreground mb-4">
+            Please create or load a project to start building SWCs
+          </p>
+          <Button onClick={() => window.location.href = '/projects'}>
+            Go to Projects
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -56,251 +163,213 @@ const SWCBuilder = () => {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline">
-            <FileCode className="h-4 w-4 mr-2" />
-            Import ARXML
-          </Button>
-          <Button className="autosar-button">
-            <Plus className="h-4 w-4 mr-2" />
-            Create SWC
-          </Button>
+          <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <FileCode className="h-4 w-4 mr-2" />
+                Import ARXML
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Import ARXML File</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="arxml-file">Select ARXML File</Label>
+                  <Input
+                    id="arxml-file"
+                    type="file"
+                    accept=".arxml,.xml"
+                    onChange={handleImportArxml}
+                    className="mt-2"
+                  />
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Supported formats: .arxml, .xml (AUTOSAR compliant)
+                </p>
+              </div>
+            </DialogContent>
+          </Dialog>
+          
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="autosar-button">
+                <Plus className="h-4 w-4 mr-2" />
+                Create SWC
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Create New SWC</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="swc-name">Short Name *</Label>
+                  <Input
+                    id="swc-name"
+                    placeholder="e.g., EngineController"
+                    value={swcName}
+                    onChange={(e) => setSwcName(e.target.value)}
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="swc-description">Description</Label>
+                  <Textarea
+                    id="swc-description"
+                    placeholder="Brief description of the component"
+                    value={swcDescription}
+                    onChange={(e) => setSwcDescription(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="swc-category">Category *</Label>
+                  <Select value={swcCategory} onValueChange={setSwcCategory}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((category) => (
+                        <SelectItem key={category.value} value={category.value}>
+                          {category.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div>
+                  <Label htmlFor="swc-type">Type</Label>
+                  <Select value={swcType} onValueChange={setSwcType}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="atomic">Atomic SWC</SelectItem>
+                      <SelectItem value="composition">Composition</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleCreateSWC} className="autosar-button">
+                    Create SWC
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Configuration */}
-        <div className="lg:col-span-2 space-y-6">
-          <Card className="autosar-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Box className="h-5 w-5" />
-                Component Configuration
-              </CardTitle>
-              <CardDescription>
-                Define the basic properties of your software component
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Tabs defaultValue="basic" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="basic">Basic Info</TabsTrigger>
-                  <TabsTrigger value="advanced">Advanced</TabsTrigger>
-                  <TabsTrigger value="implementation">Implementation</TabsTrigger>
-                </TabsList>
+      {/* SWC List */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+        {currentProject.swcs.map((swc) => {
+          const validation = getValidationStatus(swc);
+          return (
+            <Card key={swc.id} className="autosar-card hover:shadow-lg transition-all duration-300">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Box className="h-5 w-5" />
+                      {swc.name}
+                    </CardTitle>
+                    <Badge variant="outline" className="mt-1">
+                      {categories.find(c => c.value === swc.category)?.label}
+                    </Badge>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => setSelectedSWC(swc.id)}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => handleDeleteSWC(swc.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="mb-4 min-h-[40px]">
+                  {swc.description || "No description provided"}
+                </CardDescription>
                 
-                <TabsContent value="basic" className="space-y-4">
-                  <div className="grid gap-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="swc-name">Short Name *</Label>
-                      <Input
-                        id="swc-name"
-                        placeholder="e.g., EngineController"
-                        value={swcName}
-                        onChange={(e) => setSwcName(e.target.value)}
-                      />
-                    </div>
-                    
-                    <div className="grid gap-2">
-                      <Label htmlFor="swc-description">Description</Label>
-                      <Textarea
-                        id="swc-description"
-                        placeholder="Brief description of the component functionality"
-                        value={swcDescription}
-                        onChange={(e) => setSwcDescription(e.target.value)}
-                        rows={3}
-                      />
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="grid gap-2">
-                        <Label htmlFor="swc-category">Category *</Label>
-                        <Select value={swcCategory} onValueChange={setSwcCategory}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {categories.map((category) => (
-                              <SelectItem key={category.value} value={category.value}>
-                                {category.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      <div className="grid gap-2">
-                        <Label htmlFor="swc-type">Type</Label>
-                        <Select value={swcType} onValueChange={setSwcType}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="atomic">Atomic SWC</SelectItem>
-                            <SelectItem value="composition">Composition</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Type:</span>
+                    <span className="font-medium capitalize">{swc.type}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Ports:</span>
+                    <span className="font-medium">{swc.ports?.length || 0}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Runnables:</span>
+                    <span className="font-medium">{swc.runnables?.length || 0}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Validation:</span>
+                    <div className="flex items-center gap-1">
+                      {validation.status === "valid" ? (
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                      )}
+                      <span className="text-xs">
+                        {validation.validCount}/{validation.totalCount}
+                      </span>
                     </div>
                   </div>
-                </TabsContent>
-                
-                <TabsContent value="advanced" className="space-y-4">
-                  <div className="grid gap-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="uuid">UUID</Label>
-                      <Input
-                        id="uuid"
-                        placeholder="Auto-generated UUID"
-                        value="a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-                        readOnly
-                        className="bg-muted"
-                      />
-                    </div>
-                    
-                    <div className="grid gap-2">
-                      <Label htmlFor="ar-package">AR-PACKAGE Path</Label>
-                      <Input
-                        id="ar-package"
-                        placeholder="/ComponentTypes/ApplicationSWCs"
-                        value="/ComponentTypes/ApplicationSWCs"
-                      />
-                    </div>
-                    
-                    <div className="grid gap-2">
-                      <Label htmlFor="autosar-version">AUTOSAR Version</Label>
-                      <Select defaultValue="4.3.1">
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="4.3.1">AUTOSAR 4.3.1</SelectItem>
-                          <SelectItem value="4.2.2">AUTOSAR 4.2.2</SelectItem>
-                          <SelectItem value="4.4.0">AUTOSAR 4.4.0</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </TabsContent>
-                
-                <TabsContent value="implementation" className="space-y-4">
-                  <div className="grid gap-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="impl-name">Implementation Name</Label>
-                      <Input
-                        id="impl-name"
-                        placeholder="e.g., EngineController_Implementation"
-                      />
-                    </div>
-                    
-                    <div className="grid gap-2">
-                      <Label htmlFor="code-file">Code File Reference</Label>
-                      <Input
-                        id="code-file"
-                        placeholder="e.g., EngineController.c"
-                      />
-                    </div>
-                    
-                    <div className="grid gap-2">
-                      <Label htmlFor="build-type">Build Type</Label>
-                      <Select defaultValue="library">
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="library">Library</SelectItem>
-                          <SelectItem value="executable">Executable</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
-        </div>
+                </div>
 
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Validation */}
-          <Card className="autosar-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CheckCircle className="h-5 w-5" />
-                Validation
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {validationRules.map((rule) => (
-                  <div key={rule.id} className="flex items-start gap-3">
-                    {rule.status === "valid" ? (
-                      <CheckCircle className="h-4 w-4 text-green-500 mt-0.5" />
-                    ) : (
-                      <AlertTriangle className="h-4 w-4 text-yellow-500 mt-0.5" />
-                    )}
-                    <div>
-                      <p className="text-sm font-medium">{rule.rule}</p>
-                      <p className="text-xs text-muted-foreground">{rule.message}</p>
-                    </div>
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
+                  <Badge className={`${
+                    validation.status === "valid" 
+                      ? "bg-green-500/10 text-green-500" 
+                      : "bg-yellow-500/10 text-yellow-500"
+                  }`}>
+                    {validation.status === "valid" ? "Valid" : "Incomplete"}
+                  </Badge>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => window.location.href = `/port-editor?swc=${swc.id}`}>
+                      Configure
+                    </Button>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Existing Components */}
-          <Card className="autosar-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Layers className="h-5 w-5" />
-                Existing Components
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {existingComponents.map((component, index) => (
-                  <div key={index} className="p-3 rounded-lg border border-border">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-medium text-sm">{component.name}</h4>
-                      <Badge variant="outline" className="text-xs">
-                        {component.status}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mb-1">{component.category}</p>
-                    <p className="text-xs text-muted-foreground">{component.ports} ports</p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Quick Actions */}
-          <Card className="autosar-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings className="h-5 w-5" />
-                Quick Actions
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <Button variant="outline" size="sm" className="w-full justify-start">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Port
-                </Button>
-                <Button variant="outline" size="sm" className="w-full justify-start">
-                  <Settings className="h-4 w-4 mr-2" />
-                  Configure Behavior
-                </Button>
-                <Button variant="outline" size="sm" className="w-full justify-start">
-                  <FileCode className="h-4 w-4 mr-2" />
-                  Generate ARXML
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
+
+      {currentProject.swcs.length === 0 && (
+        <Card className="autosar-card">
+          <CardContent className="text-center py-12">
+            <Box className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p className="text-muted-foreground mb-4">No SWCs created yet</p>
+            <Button 
+              onClick={() => setIsCreateDialogOpen(true)}
+              className="autosar-button"
+            >
+              Create Your First SWC
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
