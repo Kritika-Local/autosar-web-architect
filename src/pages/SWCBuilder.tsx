@@ -47,11 +47,11 @@ const SWCBuilder = () => {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string; type: 'swc' | 'runnable' } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   
-  // Form states
+  // Form states with proper typing
   const [swcName, setSwcName] = useState("");
   const [swcDescription, setSwcDescription] = useState("");
-  const [swcCategory, setSwcCategory] = useState("application");
-  const [swcType, setSwcType] = useState("atomic");
+  const [swcCategory, setSwcCategory] = useState<'application' | 'service' | 'ecu-abstraction' | 'complex-driver' | 'sensor-actuator'>("application");
+  const [swcType, setSwcType] = useState<'atomic' | 'composition'>("atomic");
   const [autosarVersion, setAutosarVersion] = useState("4.3.1");
 
   const [runnableName, setRunnableName] = useState("");
@@ -291,7 +291,7 @@ const SWCBuilder = () => {
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="category">Category</Label>
-                  <Select value={swcCategory} onValueChange={setSwcCategory}>
+                  <Select value={swcCategory} onValueChange={(value) => setSwcCategory(value as typeof swcCategory)}>
                     <SelectTrigger id="category">
                       <SelectValue />
                     </SelectTrigger>
@@ -306,7 +306,7 @@ const SWCBuilder = () => {
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="type">Type</Label>
-                  <Select value={swcType} onValueChange={setSwcType}>
+                  <Select value={swcType} onValueChange={(value) => setSwcType(value as typeof swcType)}>
                     <SelectTrigger id="type">
                       <SelectValue />
                     </SelectTrigger>
