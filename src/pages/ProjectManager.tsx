@@ -70,6 +70,7 @@ const ProjectManager = () => {
       dataTypes: [],
       dataElements: [],
       connections: [],
+      ecuCompositions: [],
     });
 
     toast({
