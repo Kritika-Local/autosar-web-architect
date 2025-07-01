@@ -23,8 +23,8 @@ const SWCConnectionDialog = () => {
   const sourceSwc = currentProject?.swcs.find(swc => swc.id === sourceSwcId);
   const targetSwc = currentProject?.swcs.find(swc => swc.id === targetSwcId);
   
-  const sourceProvidedPorts = sourceSwc?.ports.filter(port => port.direction === 'provided') || [];
-  const targetRequiredPorts = targetSwc?.ports.filter(port => port.direction === 'required') || [];
+  const sourceProvidedPorts = sourceSwc?.ports?.filter(port => port.direction === 'provided') || [];
+  const targetRequiredPorts = targetSwc?.ports?.filter(port => port.direction === 'required') || [];
 
   const handleCreate = () => {
     if (!connectionName || !sourceSwcId || !sourcePortId || !targetSwcId || !targetPortId) {
@@ -37,8 +37,8 @@ const SWCConnectionDialog = () => {
     }
 
     // Validate that source port is provided and target port is required
-    const sourcePort = sourceSwc?.ports.find(p => p.id === sourcePortId);
-    const targetPort = targetSwc?.ports.find(p => p.id === targetPortId);
+    const sourcePort = sourceSwc?.ports?.find(p => p.id === sourcePortId);
+    const targetPort = targetSwc?.ports?.find(p => p.id === targetPortId);
     
     if (sourcePort?.direction !== 'provided') {
       toast({
@@ -74,6 +74,11 @@ const SWCConnectionDialog = () => {
       sourcePortId,
       targetSwcId,
       targetPortId,
+      providingComponent: sourceSwcId,
+      requiringComponent: targetSwcId,
+      providingPort: sourcePortId,
+      requiringPort: targetPortId,
+      interfaceRef: sourcePort?.interfaceRef || '',
     });
 
     toast({

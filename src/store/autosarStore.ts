@@ -16,7 +16,7 @@ export interface Swc {
 export interface Port {
   id: string;
   name: string;
-  type: 'required' | 'provided';
+  direction: 'required' | 'provided';
   interfaceRef: string;
 }
 
@@ -29,15 +29,19 @@ export interface Runnable {
 
 export interface AccessPoint {
   id: string;
-  type: 'read' | 'write';
-  portName: string;
-  dataElement: string;
+  name: string;
+  type: 'iRead' | 'iWrite' | 'iCall';
+  access: 'implicit' | 'explicit';
+  swcId: string;
+  runnableId: string;
+  portRef: string;
+  dataElementRef: string;
 }
 
 export interface Interface {
   id: string;
   name: string;
-  type: 'SenderReceiver' | 'ClientServer';
+  type: 'SenderReceiver' | 'ClientServer' | 'ModeSwitch' | 'Parameter' | 'Trigger';
   dataElements: DataElement[];
 }
 
@@ -45,13 +49,14 @@ export interface DataElement {
   id: string;
   name: string;
   applicationDataTypeRef: string;
+  category: string;
   description: string;
 }
 
 export interface DataType {
   id: string;
   name: string;
-  category: 'primitive' | 'array' | 'structure';
+  category: 'primitive' | 'array' | 'structure' | 'record' | 'typedef';
   baseType: string;
   length?: number;
   fields?: { name: string; type: string; }[];
@@ -66,6 +71,10 @@ export interface Connection {
   providingPort: string;
   requiringPort: string;
   interfaceRef: string;
+  sourceSwcId: string;
+  sourcePortId: string;
+  targetSwcId: string;
+  targetPortId: string;
 }
 
 export interface Project {
@@ -76,6 +85,11 @@ export interface Project {
   interfaces: Interface[];
   dataTypes: DataType[];
   connections: Connection[];
+  dataElements: DataElement[];
+  autosarVersion: string;
+  isDraft: boolean;
+  lastModified: number;
+  autoSaveEnabled: boolean;
 }
 
 // Define the store's state
@@ -88,21 +102,24 @@ interface AutosarState {
   createProject: (name: string, description: string) => void;
   loadProject: (projectId: string) => void;
   saveProject: () => void;
+  saveProjectAsDraft: () => void;
   autoSave: () => void;
   deleteProject: (projectId: string) => void;
+  exportArxml: () => void;
 
   createSWC: (swcData: Omit<Swc, 'id'>) => void;
   updateSWC: (swcId: string, updates: Partial<Swc>) => void;
   deleteSWC: (swcId: string) => void;
-  createPort: (swcId: string, portData: Omit<Port, 'id'>) => void;
-  updatePort: (swcId: string, portId: string, updates: Partial<Port>) => void;
+  createPort: (portData: Omit<Port, 'id'> & { swcId: string }) => void;
+  updatePort: (portId: string, updates: Partial<Port>) => void;
   deletePort: (swcId: string, portId: string) => void;
   createRunnable: (swcId: string, runnableData: Omit<Runnable, 'id'>) => void;
   updateRunnable: (swcId: string, runnableId: string, updates: Partial<Runnable>) => void;
   deleteRunnable: (swcId: string, runnableId: string) => void;
-  createAccessPoint: (swcId: string, runnableId: string, accessPointData: Omit<AccessPoint, 'id'>) => void;
-  updateAccessPoint: (swcId: string, runnableId: string, accessPointId: string, updates: Partial<AccessPoint>) => void;
+  addAccessPoint: (runnableId: string, accessPointData: Omit<AccessPoint, 'id'>) => void;
+  updateAccessPoint: (accessPointId: string, updates: Partial<AccessPoint>) => void;
   deleteAccessPoint: (swcId: string, runnableId: string, accessPointId: string) => void;
+  generateRteAccessPointName: (portName: string, dataElementName: string, accessType: string) => string;
 
   createInterface: (interfaceData: Omit<Interface, 'id'>) => void;
   updateInterface: (interfaceId: string, updates: Partial<Interface>) => void;
@@ -128,7 +145,7 @@ export const useAutosarStore = create<AutosarState>()(
     (set, get) => ({
       projects: [],
       currentProject: null,
-      autoSaveInterval: 60000, // Auto-save every 60 seconds
+      autoSaveInterval: 60000,
       lastAutoSave: null,
 
       createProject: (name: string, description: string) => {
@@ -140,6 +157,11 @@ export const useAutosarStore = create<AutosarState>()(
           interfaces: [],
           dataTypes: [],
           connections: [],
+          dataElements: [],
+          autosarVersion: '4.2.2',
+          isDraft: true,
+          lastModified: Date.now(),
+          autoSaveEnabled: true,
         };
         set(state => ({ 
           projects: [...state.projects, newProject],
@@ -159,11 +181,28 @@ export const useAutosarStore = create<AutosarState>()(
       saveProject: () => {
         const project = get().currentProject;
         if (project) {
+          const updatedProject = { ...project, lastModified: Date.now(), isDraft: false };
           set(state => ({
-            projects: state.projects.map(p => p.id === project.id ? project : p)
+            projects: state.projects.map(p => p.id === project.id ? updatedProject : p),
+            currentProject: updatedProject
           }));
           console.log(`Project ${project.name} saved successfully.`);
         }
+      },
+
+      saveProjectAsDraft: () => {
+        const project = get().currentProject;
+        if (project) {
+          const updatedProject = { ...project, lastModified: Date.now(), isDraft: true };
+          set(state => ({
+            projects: state.projects.map(p => p.id === project.id ? updatedProject : p),
+            currentProject: updatedProject
+          }));
+        }
+      },
+
+      exportArxml: () => {
+        get().exportMultipleArxml();
       },
 
       autoSave: () => {
@@ -217,8 +256,9 @@ export const useAutosarStore = create<AutosarState>()(
         }));
       },
 
-      createPort: (swcId: string, portData: Omit<Port, 'id'>) => {
-        const newPort: Port = { id: uuidv4(), ...portData };
+      createPort: (portData: Omit<Port, 'id'> & { swcId: string }) => {
+        const { swcId, ...portInfo } = portData;
+        const newPort: Port = { id: uuidv4(), ...portInfo };
         set(state => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
@@ -229,18 +269,16 @@ export const useAutosarStore = create<AutosarState>()(
         }));
       },
 
-      updatePort: (swcId: string, portId: string, updates: Partial<Port>) => {
+      updatePort: (portId: string, updates: Partial<Port>) => {
         set(state => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
-            swcs: state.currentProject.swcs.map(swc =>
-              swc.id === swcId ? {
-                ...swc,
-                ports: (swc.ports || []).map(port =>
-                  port.id === portId ? { ...port, ...updates } : port
-                )
-              } : swc
-            )
+            swcs: state.currentProject.swcs.map(swc => ({
+              ...swc,
+              ports: (swc.ports || []).map(port =>
+                port.id === portId ? { ...port, ...updates } : port
+              )
+            }))
           } : state.currentProject
         }));
       },
@@ -301,43 +339,37 @@ export const useAutosarStore = create<AutosarState>()(
         }));
       },
 
-      createAccessPoint: (swcId: string, runnableId: string, accessPointData: Omit<AccessPoint, 'id'>) => {
+      addAccessPoint: (runnableId: string, accessPointData: Omit<AccessPoint, 'id'>) => {
         const newAccessPoint: AccessPoint = { id: uuidv4(), ...accessPointData };
         set(state => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
-            swcs: state.currentProject.swcs.map(swc =>
-              swc.id === swcId ? {
-                ...swc,
-                runnables: (swc.runnables || []).map(runnable =>
-                  runnable.id === runnableId ? {
-                    ...runnable,
-                    accessPoints: [...(runnable.accessPoints || []), newAccessPoint]
-                  } : runnable
-                )
-              } : swc
-            )
+            swcs: state.currentProject.swcs.map(swc => ({
+              ...swc,
+              runnables: (swc.runnables || []).map(runnable =>
+                runnable.id === runnableId ? {
+                  ...runnable,
+                  accessPoints: [...(runnable.accessPoints || []), newAccessPoint]
+                } : runnable
+              )
+            }))
           } : state.currentProject
         }));
       },
 
-      updateAccessPoint: (swcId: string, runnableId: string, accessPointId: string, updates: Partial<AccessPoint>) => {
+      updateAccessPoint: (accessPointId: string, updates: Partial<AccessPoint>) => {
         set(state => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
-            swcs: state.currentProject.swcs.map(swc =>
-              swc.id === swcId ? {
-                ...swc,
-                runnables: (swc.runnables || []).map(runnable =>
-                  runnable.id === runnableId ? {
-                    ...runnable,
-                    accessPoints: (runnable.accessPoints || []).map(ap =>
-                      ap.id === accessPointId ? { ...ap, ...updates } : ap
-                    )
-                  } : runnable
+            swcs: state.currentProject.swcs.map(swc => ({
+              ...swc,
+              runnables: (swc.runnables || []).map(runnable => ({
+                ...runnable,
+                accessPoints: (runnable.accessPoints || []).map(ap =>
+                  ap.id === accessPointId ? { ...ap, ...updates } : ap
                 )
-              } : swc
-            )
+              }))
+            }))
           } : state.currentProject
         }));
       },
@@ -359,6 +391,10 @@ export const useAutosarStore = create<AutosarState>()(
             )
           } : state.currentProject
         }));
+      },
+
+      generateRteAccessPointName: (portName: string, dataElementName: string, accessType: string) => {
+        return `Rte_${accessType}_${portName}_${dataElementName}`;
       },
 
       createInterface: (interfaceData: Omit<Interface, 'id'>) => {
@@ -398,7 +434,8 @@ export const useAutosarStore = create<AutosarState>()(
             ...state.currentProject,
             interfaces: state.currentProject.interfaces.map(iface =>
               iface.id === interfaceId ? { ...iface, dataElements: [...iface.dataElements, newDataElement] } : iface
-            )
+            ),
+            dataElements: [...(state.currentProject.dataElements || []), newDataElement]
           } : state.currentProject
         }));
       },
@@ -414,6 +451,9 @@ export const useAutosarStore = create<AutosarState>()(
                   de.id === dataElementId ? { ...de, ...updates } : de
                 )
               } : iface
+            ),
+            dataElements: (state.currentProject.dataElements || []).map(de =>
+              de.id === dataElementId ? { ...de, ...updates } : de
             )
           } : state.currentProject
         }));
@@ -428,7 +468,8 @@ export const useAutosarStore = create<AutosarState>()(
                 ...iface,
                 dataElements: iface.dataElements.filter(de => de.id !== dataElementId)
               } : iface
-            )
+            ),
+            dataElements: (state.currentProject.dataElements || []).filter(de => de.id !== dataElementId)
           } : state.currentProject
         }));
       },
@@ -578,7 +619,7 @@ export const useAutosarStore = create<AutosarState>()(
               <SHORT-NAME>${swc.name}</SHORT-NAME>
               <CATEGORY>${swc.category}</CATEGORY>
               <PORTS>
-    ${ports.map(port => `            <${port.type === 'provided' ? 'P' : 'R'}-PORT-PROTOTYPE>
+    ${ports.map(port => `            <${port.direction === 'provided' ? 'P' : 'R'}-PORT-PROTOTYPE>
                   <SHORT-NAME>${port.name}</SHORT-NAME>
                   <PROVIDED-COM-SPECS>
                     <NONQUEUED-SENDER-COM-SPEC>
@@ -587,7 +628,7 @@ export const useAutosarStore = create<AutosarState>()(
                     </NONQUEUED-SENDER-COM-SPEC>
                   </PROVIDED-COM-SPECS>
                   <PROVIDED-INTERFACE-TREF DEST="SENDER-RECEIVER-INTERFACE">/ComponentTypes/PortInterfaces/${port.interfaceRef}</PROVIDED-INTERFACE-TREF>
-                </${port.type === 'provided' ? 'P' : 'R'}-PORT-PROTOTYPE>`).join('\n')}
+                </${port.direction === 'provided' ? 'P' : 'R'}-PORT-PROTOTYPE>`).join('\n')}
               </PORTS>
               <INTERNAL-BEHAVIORS>
                 <SWC-INTERNAL-BEHAVIOR>
@@ -604,23 +645,23 @@ export const useAutosarStore = create<AutosarState>()(
     ${runnables.map(runnable => `                <RUNNABLE-ENTITY>
                       <SHORT-NAME>${runnable.name}</SHORT-NAME>
                       <DATA-READ-ACCESSS>
-    ${runnable.accessPoints?.filter(ap => ap.type === 'read').map(ap => `                    <VARIABLE-ACCESS>
-                          <SHORT-NAME>${ap.portName}_${ap.dataElement}_Read</SHORT-NAME>
+    ${runnable.accessPoints?.filter(ap => ap.type === 'iRead').map(ap => `                    <VARIABLE-ACCESS>
+                          <SHORT-NAME>${ap.name}_Read</SHORT-NAME>
                           <ACCESSED-VARIABLE>
                             <AUTOSAR-VARIABLE-IREF>
-                              <PORT-PROTOTYPE-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/ApplicationSoftwareComponents/${swc.name}/${ap.portName}</PORT-PROTOTYPE-REF>
-                              <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/ComponentTypes/PortInterfaces/${ports.find(p => p.name === ap.portName)?.interfaceRef}/${ap.dataElement}</TARGET-DATA-PROTOTYPE-REF>
+                              <PORT-PROTOTYPE-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/ApplicationSoftwareComponents/${swc.name}/${ap.portRef}</PORT-PROTOTYPE-REF>
+                              <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/ComponentTypes/PortInterfaces/${ports.find(p => p.id === ap.portRef)?.interfaceRef}/${ap.dataElementRef}</TARGET-DATA-PROTOTYPE-REF>
                             </AUTOSAR-VARIABLE-IREF>
                           </ACCESSED-VARIABLE>
                         </VARIABLE-ACCESS>`).join('\n') || ''}
                       </DATA-READ-ACCESSS>
                       <DATA-WRITE-ACCESSS>
-    ${runnable.accessPoints?.filter(ap => ap.type === 'write').map(ap => `                    <VARIABLE-ACCESS>
-                          <SHORT-NAME>${ap.portName}_${ap.dataElement}_Write</SHORT-NAME>
+    ${runnable.accessPoints?.filter(ap => ap.type === 'iWrite').map(ap => `                    <VARIABLE-ACCESS>
+                          <SHORT-NAME>${ap.name}_Write</SHORT-NAME>
                           <ACCESSED-VARIABLE>
                             <AUTOSAR-VARIABLE-IREF>
-                              <PORT-PROTOTYPE-REF DEST="P-PORT-PROTOTYPE">/ComponentTypes/ApplicationSoftwareComponents/${swc.name}/${ap.portName}</PORT-PROTOTYPE-REF>
-                              <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/ComponentTypes/PortInterfaces/${ports.find(p => p.name === ap.portName)?.interfaceRef}/${ap.dataElement}</TARGET-DATA-PROTOTYPE-REF>
+                              <PORT-PROTOTYPE-REF DEST="P-PORT-PROTOTYPE">/ComponentTypes/ApplicationSoftwareComponents/${swc.name}/${ap.portRef}</PORT-PROTOTYPE-REF>
+                              <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/ComponentTypes/PortInterfaces/${ports.find(p => p.id === ap.portRef)?.interfaceRef}/${ap.dataElementRef}</TARGET-DATA-PROTOTYPE-REF>
                             </AUTOSAR-VARIABLE-IREF>
                           </ACCESSED-VARIABLE>
                         </VARIABLE-ACCESS>`).join('\n') || ''}

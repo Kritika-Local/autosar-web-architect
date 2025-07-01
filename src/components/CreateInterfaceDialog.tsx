@@ -15,7 +15,7 @@ const CreateInterfaceDialog = () => {
   
   const [open, setOpen] = useState(false);
   const [interfaceName, setInterfaceName] = useState("");
-  const [interfaceType, setInterfaceType] = useState<'SenderReceiver' | 'ClientServer' | 'ModeSwitch' | 'Parameter' | 'Trigger'>("SenderReceiver");
+  const [interfaceType, setInterfaceType] = useState<'SenderReceiver' | 'ClientServer'>("SenderReceiver");
   const [selectedDataElements, setSelectedDataElements] = useState<string[]>([]);
 
   const availableDataTypes = [
@@ -49,8 +49,9 @@ const CreateInterfaceDialog = () => {
     const dataElements: DataElement[] = selectedDataElements.map((name, index) => ({
       id: `de_${Date.now()}_${index}`,
       name,
-      applicationDataTypeRef: "uint32", // Default type
+      applicationDataTypeRef: "uint32",
       category: "VALUE",
+      description: `Data element ${name}`,
     }));
 
     createInterface({
@@ -96,16 +97,13 @@ const CreateInterfaceDialog = () => {
           
           <div className="grid gap-2">
             <Label htmlFor="interface-type">Interface Type *</Label>
-            <Select value={interfaceType} onValueChange={(value) => setInterfaceType(value as any)}>
+            <Select value={interfaceType} onValueChange={(value) => setInterfaceType(value as 'SenderReceiver' | 'ClientServer')}>
               <SelectTrigger id="interface-type">
                 <SelectValue placeholder="Select interface type" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="SenderReceiver">Sender-Receiver</SelectItem>
                 <SelectItem value="ClientServer">Client-Server</SelectItem>
-                <SelectItem value="ModeSwitch">Mode Switch</SelectItem>
-                <SelectItem value="Parameter">Parameter</SelectItem>
-                <SelectItem value="Trigger">Trigger</SelectItem>
               </SelectContent>
             </Select>
           </div>
