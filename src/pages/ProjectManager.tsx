@@ -71,6 +71,8 @@ const ProjectManager = () => {
       dataElements: [],
       connections: [],
       ecuCompositions: [],
+      isDraft: true,
+      autoSaveEnabled: true,
     });
 
     toast({
