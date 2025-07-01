@@ -51,7 +51,7 @@ const SWCBuilder = () => {
   const [swcName, setSwcName] = useState("");
   const [swcDescription, setSwcDescription] = useState("");
   const [swcCategory, setSwcCategory] = useState<'application' | 'service' | 'ecu-abstraction' | 'complex-driver' | 'sensor-actuator'>("application");
-  const [swcType, setSwcType] = useState<'atomic' | 'composition'>("atomic");
+  const [swcType, setSwcType] = useState<'atomic' | 'composite'>("atomic");
   const [autosarVersion, setAutosarVersion] = useState("4.3.1");
 
   const [runnableName, setRunnableName] = useState("");
@@ -105,7 +105,7 @@ const SWCBuilder = () => {
       name: runnableName,
       swcId: selectedSwcId,
       runnableType,
-      period: runnableType === 'periodic' ? runnablePeriod : undefined,
+      period: runnableType === 'periodic' ? runnablePeriod : 0,
       canBeInvokedConcurrently,
       events: [],
     });
@@ -311,7 +311,7 @@ const SWCBuilder = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="atomic">Atomic</SelectItem>
-                      <SelectItem value="composition">Composition</SelectItem>
+                      <SelectItem value="composite">Composite</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

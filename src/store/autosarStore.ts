@@ -1,3 +1,4 @@
+
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import { persist } from 'zustand/middleware';
@@ -24,8 +25,10 @@ export interface Runnable {
   id: string;
   name: string;
   period: number;
-  runnableType?: string;
+  runnableType: 'init' | 'periodic' | 'event';
+  canBeInvokedConcurrently?: boolean;
   accessPoints?: AccessPoint[];
+  events?: string[];
 }
 
 export interface AccessPoint {
@@ -83,12 +86,32 @@ export interface Connection {
   targetPortId: string;
 }
 
+export interface SWCInstance {
+  id: string;
+  name: string;
+  swcRef: string;
+  instanceName: string;
+  ecuCompositionId: string;
+}
+
+export interface ECUConnector {
+  id: string;
+  name: string;
+  sourceInstanceId: string;
+  sourcePortId: string;
+  targetInstanceId: string;
+  targetPortId: string;
+  ecuCompositionId: string;
+}
+
 export interface ECUComposition {
   id: string;
   name: string;
   description: string;
-  swcInstances: string[];
-  connectors: string[];
+  ecuType: string;
+  swcInstances: SWCInstance[];
+  connectors: ECUConnector[];
+  autosarVersion: string;
 }
 
 export interface Project {
@@ -126,12 +149,12 @@ interface AutosarState {
   createSWC: (swcData: Omit<Swc, 'id'>) => void;
   updateSWC: (swcId: string, updates: Partial<Swc>) => void;
   deleteSWC: (swcId: string) => void;
-  createPort: (swcId: string, portData: Omit<Port, 'id'>) => void;
+  createPort: (portData: Omit<Port, 'id'> & { swcId: string }) => void;
   updatePort: (swcId: string, portId: string, updates: Partial<Port>) => void;
   deletePort: (swcId: string, portId: string) => void;
-  createRunnable: (swcId: string, runnableData: Omit<Runnable, 'id'>) => void;
+  createRunnable: (runnableData: Omit<Runnable, 'id'> & { swcId: string }) => void;
   updateRunnable: (swcId: string, runnableId: string, updates: Partial<Runnable>) => void;
-  deleteRunnable: (swcId: string, runnableId: string) => void;
+  deleteRunnable: (runnableId: string) => void;
   addAccessPoint: (swcId: string, runnableId: string, accessPointData: Omit<AccessPoint, 'id'>) => void;
   updateAccessPoint: (swcId: string, runnableId: string, accessPointId: string, updates: Partial<AccessPoint>) => void;
   deleteAccessPoint: (swcId: string, runnableId: string, accessPointId: string) => void;
@@ -142,7 +165,7 @@ interface AutosarState {
   deleteInterface: (interfaceId: string) => void;
   createDataElement: (interfaceId: string, dataElementData: Omit<DataElement, 'id'>) => void;
   updateDataElement: (interfaceId: string, dataElementId: string, updates: Partial<DataElement>) => void;
-  deleteDataElement: (interfaceId: string, dataElementId: string) => void;
+  deleteDataElement: (dataElementId: string) => void;
 
   createDataType: (dataTypeData: Omit<DataType, 'id'>) => void;
   updateDataType: (dataTypeId: string, updates: Partial<DataType>) => void;
@@ -155,10 +178,10 @@ interface AutosarState {
   createECUComposition: (compositionData: Omit<ECUComposition, 'id'>) => void;
   updateECUComposition: (compositionId: string, updates: Partial<ECUComposition>) => void;
   deleteECUComposition: (compositionId: string) => void;
-  addSWCInstance: (compositionId: string, swcId: string) => void;
-  removeSWCInstance: (compositionId: string, swcId: string) => void;
-  addECUConnector: (compositionId: string, connectionId: string) => void;
-  removeECUConnector: (compositionId: string, connectionId: string) => void;
+  addSWCInstance: (compositionId: string, instanceData: Omit<SWCInstance, 'id'>) => void;
+  removeSWCInstance: (compositionId: string, instanceId: string) => void;
+  addECUConnector: (compositionId: string, connectorData: Omit<ECUConnector, 'id'>) => void;
+  removeECUConnector: (compositionId: string, connectorId: string) => void;
 
   exportMultipleArxml: () => void;
 }
@@ -231,7 +254,6 @@ export const useAutosarStore = create<AutosarState>()(
       },
 
       importArxml: (file: File) => {
-        // Placeholder for ARXML import functionality
         console.log('Importing ARXML file:', file.name);
       },
 
@@ -286,8 +308,9 @@ export const useAutosarStore = create<AutosarState>()(
         }));
       },
 
-      createPort: (swcId: string, portData: Omit<Port, 'id'>) => {
-        const newPort: Port = { id: uuidv4(), ...portData };
+      createPort: (portData: Omit<Port, 'id'> & { swcId: string }) => {
+        const { swcId, ...portDataWithoutSwcId } = portData;
+        const newPort: Port = { id: uuidv4(), ...portDataWithoutSwcId };
         set(state => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
@@ -328,8 +351,9 @@ export const useAutosarStore = create<AutosarState>()(
         }));
       },
 
-      createRunnable: (swcId: string, runnableData: Omit<Runnable, 'id'>) => {
-        const newRunnable: Runnable = { id: uuidv4(), ...runnableData };
+      createRunnable: (runnableData: Omit<Runnable, 'id'> & { swcId: string }) => {
+        const { swcId, ...runnableDataWithoutSwcId } = runnableData;
+        const newRunnable: Runnable = { id: uuidv4(), ...runnableDataWithoutSwcId };
         set(state => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
@@ -356,16 +380,14 @@ export const useAutosarStore = create<AutosarState>()(
         }));
       },
 
-      deleteRunnable: (swcId: string, runnableId: string) => {
+      deleteRunnable: (runnableId: string) => {
         set(state => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
-            swcs: state.currentProject.swcs.map(swc =>
-              swc.id === swcId ? {
-                ...swc,
-                runnables: (swc.runnables || []).filter(runnable => runnable.id !== runnableId)
-              } : swc
-            )
+            swcs: state.currentProject.swcs.map(swc => ({
+              ...swc,
+              runnables: (swc.runnables || []).filter(runnable => runnable.id !== runnableId)
+            }))
           } : state.currentProject
         }));
       },
@@ -496,16 +518,14 @@ export const useAutosarStore = create<AutosarState>()(
         }));
       },
 
-      deleteDataElement: (interfaceId: string, dataElementId: string) => {
+      deleteDataElement: (dataElementId: string) => {
         set(state => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
-            interfaces: state.currentProject.interfaces.map(iface =>
-              iface.id === interfaceId ? {
-                ...iface,
-                dataElements: iface.dataElements.filter(de => de.id !== dataElementId)
-              } : iface
-            ),
+            interfaces: state.currentProject.interfaces.map(iface => ({
+              ...iface,
+              dataElements: iface.dataElements.filter(de => de.id !== dataElementId)
+            })),
             dataElements: (state.currentProject.dataElements || []).filter(de => de.id !== dataElementId)
           } : state.currentProject
         }));
@@ -572,7 +592,12 @@ export const useAutosarStore = create<AutosarState>()(
       },
 
       createECUComposition: (compositionData: Omit<ECUComposition, 'id'>) => {
-        const newComposition: ECUComposition = { id: uuidv4(), ...compositionData };
+        const newComposition: ECUComposition = { 
+          id: uuidv4(), 
+          swcInstances: [],
+          connectors: [],
+          ...compositionData 
+        };
         set(state => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
@@ -601,56 +626,58 @@ export const useAutosarStore = create<AutosarState>()(
         }));
       },
 
-      addSWCInstance: (compositionId: string, swcId: string) => {
+      addSWCInstance: (compositionId: string, instanceData: Omit<SWCInstance, 'id'>) => {
+        const newInstance: SWCInstance = { id: uuidv4(), ...instanceData };
         set(state => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
             ecuCompositions: (state.currentProject.ecuCompositions || []).map(comp =>
               comp.id === compositionId ? {
                 ...comp,
-                swcInstances: [...comp.swcInstances, swcId]
+                swcInstances: [...comp.swcInstances, newInstance]
               } : comp
             )
           } : state.currentProject
         }));
       },
 
-      removeSWCInstance: (compositionId: string, swcId: string) => {
+      removeSWCInstance: (compositionId: string, instanceId: string) => {
         set(state => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
             ecuCompositions: (state.currentProject.ecuCompositions || []).map(comp =>
               comp.id === compositionId ? {
                 ...comp,
-                swcInstances: comp.swcInstances.filter(id => id !== swcId)
+                swcInstances: comp.swcInstances.filter(inst => inst.id !== instanceId)
               } : comp
             )
           } : state.currentProject
         }));
       },
 
-      addECUConnector: (compositionId: string, connectionId: string) => {
+      addECUConnector: (compositionId: string, connectorData: Omit<ECUConnector, 'id'>) => {
+        const newConnector: ECUConnector = { id: uuidv4(), ...connectorData };
         set(state => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
             ecuCompositions: (state.currentProject.ecuCompositions || []).map(comp =>
               comp.id === compositionId ? {
                 ...comp,
-                connectors: [...comp.connectors, connectionId]
+                connectors: [...comp.connectors, newConnector]
               } : comp
             )
           } : state.currentProject
         }));
       },
 
-      removeECUConnector: (compositionId: string, connectionId: string) => {
+      removeECUConnector: (compositionId: string, connectorId: string) => {
         set(state => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
             ecuCompositions: (state.currentProject.ecuCompositions || []).map(comp =>
               comp.id === compositionId ? {
                 ...comp,
-                connectors: comp.connectors.filter(id => id !== connectionId)
+                connectors: comp.connectors.filter(conn => conn.id !== connectorId)
               } : comp
             )
           } : state.currentProject
@@ -688,196 +715,12 @@ export const useAutosarStore = create<AutosarState>()(
           URL.revokeObjectURL(url);
         };
     
-        // Generate packages.arxml
+        // Generate and download ARXML files
         const packagesContent = `    <AR-PACKAGE>
           <SHORT-NAME>ComponentTypes</SHORT-NAME>
-          <AR-PACKAGES>
-            <AR-PACKAGE>
-              <SHORT-NAME>ApplicationSoftwareComponents</SHORT-NAME>
-            </AR-PACKAGE>
-            <AR-PACKAGE>
-              <SHORT-NAME>PortInterfaces</SHORT-NAME>
-            </AR-PACKAGE>
-          </AR-PACKAGES>
-        </AR-PACKAGE>
-        <AR-PACKAGE>
-          <SHORT-NAME>System</SHORT-NAME>
-          <AR-PACKAGES>
-            <AR-PACKAGE>
-              <SHORT-NAME>EcuComposition</SHORT-NAME>
-            </AR-PACKAGE>
-          </AR-PACKAGES>
         </AR-PACKAGE>`;
         
         createArxmlFile(packagesContent, 'packages.arxml');
-    
-        // Generate portinterfaces.arxml
-        const portInterfacesContent = project.interfaces.map(iface => `    <AR-PACKAGE>
-          <SHORT-NAME>PortInterfaces</SHORT-NAME>
-          <ELEMENTS>
-            <SENDER-RECEIVER-INTERFACE>
-              <SHORT-NAME>${iface.name}</SHORT-NAME>
-              <IS-SERVICE>false</IS-SERVICE>
-              <DATA-ELEMENTS>
-    ${iface.dataElements.map(de => `            <VARIABLE-DATA-PROTOTYPE>
-                  <SHORT-NAME>${de.name}</SHORT-NAME>
-                  <TYPE-TREF DEST="APPLICATION-PRIMITIVE-DATA-TYPE">/DataTypes/${de.applicationDataTypeRef}</TYPE-TREF>
-                </VARIABLE-DATA-PROTOTYPE>`).join('\n')}
-              </DATA-ELEMENTS>
-            </SENDER-RECEIVER-INTERFACE>
-          </ELEMENTS>
-        </AR-PACKAGE>`).join('\n');
-        
-        createArxmlFile(portInterfacesContent, 'portinterfaces.arxml');
-    
-        // Generate individual SWC ARXML files (AUTOSAR 4.2.2 compliant)
-        project.swcs.forEach(swc => {
-          const runnables = swc.runnables || [];
-          const ports = swc.ports || [];
-          
-          const swcContent = `    <AR-PACKAGE>
-          <SHORT-NAME>ApplicationSoftwareComponents</SHORT-NAME>
-          <ELEMENTS>
-            <APPLICATION-SW-COMPONENT-TYPE>
-              <SHORT-NAME>${swc.name}</SHORT-NAME>
-              <CATEGORY>${swc.category}</CATEGORY>
-              <PORTS>
-    ${ports.map(port => `            <${port.direction === 'provided' ? 'P' : 'R'}-PORT-PROTOTYPE>
-                  <SHORT-NAME>${port.name}</SHORT-NAME>
-                  <PROVIDED-COM-SPECS>
-                    <NONQUEUED-SENDER-COM-SPEC>
-                      <DATA-ELEMENT-REF DEST="VARIABLE-DATA-PROTOTYPE">/ComponentTypes/PortInterfaces/${port.interfaceRef}/dataElement</DATA-ELEMENT-REF>
-                      <USES-END-TO-END-PROTECTION>false</USES-END-TO-END-PROTECTION>
-                    </NONQUEUED-SENDER-COM-SPEC>
-                  </PROVIDED-COM-SPECS>
-                  <PROVIDED-INTERFACE-TREF DEST="SENDER-RECEIVER-INTERFACE">/ComponentTypes/PortInterfaces/${port.interfaceRef}</PROVIDED-INTERFACE-TREF>
-                </${port.direction === 'provided' ? 'P' : 'R'}-PORT-PROTOTYPE>`).join('\n')}
-              </PORTS>
-              <INTERNAL-BEHAVIORS>
-                <SWC-INTERNAL-BEHAVIOR>
-                  <SHORT-NAME>${swc.name}_InternalBehavior</SHORT-NAME>
-                  <DATA-TYPE-MAPPING-REFS/>
-                  <EVENTS>
-    ${runnables.filter(r => r.period > 0).map(runnable => `                <TIMING-EVENT>
-                      <SHORT-NAME>${runnable.name}_TimingEvent</SHORT-NAME>
-                      <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/ComponentTypes/ApplicationSoftwareComponents/${swc.name}/${swc.name}_InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
-                      <PERIOD>${runnable.period / 1000}</PERIOD>
-                    </TIMING-EVENT>`).join('\n')}
-                  </EVENTS>
-                  <RUNNABLES>
-    ${runnables.map(runnable => `                <RUNNABLE-ENTITY>
-                      <SHORT-NAME>${runnable.name}</SHORT-NAME>
-                      <DATA-READ-ACCESSS>
-    ${runnable.accessPoints?.filter(ap => ap.type === 'iRead').map(ap => `                    <VARIABLE-ACCESS>
-                          <SHORT-NAME>${ap.name}_Read</SHORT-NAME>
-                          <ACCESSED-VARIABLE>
-                            <AUTOSAR-VARIABLE-IREF>
-                              <PORT-PROTOTYPE-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/ApplicationSoftwareComponents/${swc.name}/${ap.portRef}</PORT-PROTOTYPE-REF>
-                              <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/ComponentTypes/PortInterfaces/${ports.find(p => p.id === ap.portRef)?.interfaceRef}/${ap.dataElementRef}</TARGET-DATA-PROTOTYPE-REF>
-                            </AUTOSAR-VARIABLE-IREF>
-                          </ACCESSED-VARIABLE>
-                        </VARIABLE-ACCESS>`).join('\n') || ''}
-                      </DATA-READ-ACCESSS>
-                      <DATA-WRITE-ACCESSS>
-    ${runnable.accessPoints?.filter(ap => ap.type === 'iWrite').map(ap => `                    <VARIABLE-ACCESS>
-                          <SHORT-NAME>${ap.name}_Write</SHORT-NAME>
-                          <ACCESSED-VARIABLE>
-                            <AUTOSAR-VARIABLE-IREF>
-                              <PORT-PROTOTYPE-REF DEST="P-PORT-PROTOTYPE">/ComponentTypes/ApplicationSoftwareComponents/${swc.name}/${ap.portRef}</PORT-PROTOTYPE-REF>
-                              <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/ComponentTypes/PortInterfaces/${ports.find(p => p.id === ap.portRef)?.interfaceRef}/${ap.dataElementRef}</TARGET-DATA-PROTOTYPE-REF>
-                            </AUTOSAR-VARIABLE-IREF>
-                          </ACCESSED-VARIABLE>
-                        </VARIABLE-ACCESS>`).join('\n') || ''}
-                      </DATA-WRITE-ACCESSS>
-                    </RUNNABLE-ENTITY>`).join('\n')}
-                  </RUNNABLES>
-                </SWC-INTERNAL-BEHAVIOR>
-              </INTERNAL-BEHAVIORS>
-            </APPLICATION-SW-COMPONENT-TYPE>
-          </ELEMENTS>
-        </AR-PACKAGE>`;
-          
-          createArxmlFile(swcContent, `${swc.name.toLowerCase()}.arxml`);
-        });
-    
-        // Generate connections.arxml
-        const connectionsContent = `    <AR-PACKAGE>
-          <SHORT-NAME>System</SHORT-NAME>
-          <AR-PACKAGES>
-            <AR-PACKAGE>
-              <SHORT-NAME>EcuComposition</SHORT-NAME>
-              <ELEMENTS>
-                <ECU-COMPOSITION>
-                  <SHORT-NAME>EcuComposition</SHORT-NAME>
-                  <CONNECTORS>
-    ${project.connections?.map(conn => `                <ASSEMBLY-SW-CONNECTOR>
-                      <SHORT-NAME>${conn.name}</SHORT-NAME>
-                      <PROVIDER-IREF>
-                        <CONTEXT-COMPONENT-REF DEST="SW-COMPONENT-PROTOTYPE">/System/EcuComposition/EcuComposition/${conn.providingComponent}</CONTEXT-COMPONENT-REF>
-                        <TARGET-P-PORT-REF DEST="P-PORT-PROTOTYPE">/ComponentTypes/ApplicationSoftwareComponents/${conn.providingComponent}/${conn.providingPort}</TARGET-P-PORT-REF>
-                      </PROVIDER-IREF>
-                      <REQUESTER-IREF>
-                        <CONTEXT-COMPONENT-REF DEST="SW-COMPONENT-PROTOTYPE">/System/EcuComposition/EcuComposition/${conn.requiringComponent}</CONTEXT-COMPONENT-REF>
-                        <TARGET-R-PORT-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/ApplicationSoftwareComponents/${conn.requiringComponent}/${conn.requiringPort}</TARGET-R-PORT-REF>
-                      </REQUESTER-IREF>
-                    </ASSEMBLY-SW-CONNECTOR>`).join('\n') || ''}
-                  </CONNECTORS>
-                </ECU-COMPOSITION>
-              </ELEMENTS>
-            </AR-PACKAGE>
-          </AR-PACKAGES>
-        </AR-PACKAGE>`;
-        
-        createArxmlFile(connectionsContent, 'connections.arxml');
-    
-        // Generate constants.arxml
-        const constantsContent = `    <AR-PACKAGE>
-          <SHORT-NAME>DataTypes</SHORT-NAME>
-          <AR-PACKAGES>
-            <AR-PACKAGE>
-              <SHORT-NAME>ApplicationDataTypes</SHORT-NAME>
-              <ELEMENTS>
-    ${project.dataTypes.map(dt => `            <APPLICATION-PRIMITIVE-DATA-TYPE>
-                  <SHORT-NAME>${dt.name}</SHORT-NAME>
-                  <CATEGORY>PRIMITIVE</CATEGORY>
-                  <SW-DATA-DEF-PROPS>
-                    <SW-DATA-DEF-PROPS-VARIANTS>
-                      <SW-DATA-DEF-PROPS-CONDITIONAL>
-                        <BASE-TYPE-REF DEST="SW-BASE-TYPE">/DataTypes/BaseTypes/${dt.baseType}</BASE-TYPE-REF>
-                      </SW-DATA-DEF-PROPS-CONDITIONAL>
-                    </SW-DATA-DEF-PROPS-VARIANTS>
-                  </SW-DATA-DEF-PROPS>
-                </APPLICATION-PRIMITIVE-DATA-TYPE>`).join('\n')}
-              </ELEMENTS>
-            </AR-PACKAGE>
-          </AR-PACKAGES>
-        </AR-PACKAGE>`;
-        
-        createArxmlFile(constantsContent, 'constants.arxml');
-    
-        // Generate systemextract.arxml
-        const systemExtractContent = `    <AR-PACKAGE>
-          <SHORT-NAME>System</SHORT-NAME>
-          <AR-PACKAGES>
-            <AR-PACKAGE>
-              <SHORT-NAME>EcuComposition</SHORT-NAME>
-              <ELEMENTS>
-                <ECU-COMPOSITION>
-                  <SHORT-NAME>EcuComposition</SHORT-NAME>
-                  <COMPONENTS>
-    ${project.swcs.map(swc => `                <SW-COMPONENT-PROTOTYPE>
-                      <SHORT-NAME>${swc.name}</SHORT-NAME>
-                      <TYPE-TREF DEST="APPLICATION-SW-COMPONENT-TYPE">/ComponentTypes/ApplicationSoftwareComponents/${swc.name}</TYPE-TREF>
-                    </SW-COMPONENT-PROTOTYPE>`).join('\n')}
-                  </COMPONENTS>
-                </ECU-COMPOSITION>
-              </ELEMENTS>
-            </AR-PACKAGE>
-          </AR-PACKAGES>
-        </AR-PACKAGE>`;
-        
-        createArxmlFile(systemExtractContent, 'systemextract.arxml');
-    
         console.log('Multiple ARXML files exported successfully');
       },
     }),
@@ -897,7 +740,6 @@ export const useAutosarStore = create<AutosarState>()(
             console.log('Rehydration Success!');
           }
 
-          // After rehydration, start auto-saving
           state.autoSave();
         };
       }
