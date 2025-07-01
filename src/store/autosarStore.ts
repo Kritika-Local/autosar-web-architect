@@ -24,6 +24,7 @@ export interface Runnable {
   id: string;
   name: string;
   period: number;
+  runnableType?: string;
   accessPoints?: AccessPoint[];
 }
 
@@ -51,6 +52,10 @@ export interface DataElement {
   applicationDataTypeRef: string;
   category: string;
   description: string;
+  swDataDefProps?: {
+    baseTypeRef: string;
+    implementationDataTypeRef: string;
+  };
 }
 
 export interface DataType {
@@ -59,6 +64,7 @@ export interface DataType {
   category: 'primitive' | 'array' | 'structure' | 'record' | 'typedef';
   baseType: string;
   length?: number;
+  arraySize?: number;
   fields?: { name: string; type: string; }[];
   description: string;
 }
@@ -77,6 +83,14 @@ export interface Connection {
   targetPortId: string;
 }
 
+export interface ECUComposition {
+  id: string;
+  name: string;
+  description: string;
+  swcInstances: string[];
+  connectors: string[];
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -86,6 +100,7 @@ export interface Project {
   dataTypes: DataType[];
   connections: Connection[];
   dataElements: DataElement[];
+  ecuCompositions: ECUComposition[];
   autosarVersion: string;
   isDraft: boolean;
   lastModified: number;
@@ -106,18 +121,19 @@ interface AutosarState {
   autoSave: () => void;
   deleteProject: (projectId: string) => void;
   exportArxml: () => void;
+  importArxml: (file: File) => void;
 
   createSWC: (swcData: Omit<Swc, 'id'>) => void;
   updateSWC: (swcId: string, updates: Partial<Swc>) => void;
   deleteSWC: (swcId: string) => void;
-  createPort: (portData: Omit<Port, 'id'> & { swcId: string }) => void;
-  updatePort: (portId: string, updates: Partial<Port>) => void;
+  createPort: (swcId: string, portData: Omit<Port, 'id'>) => void;
+  updatePort: (swcId: string, portId: string, updates: Partial<Port>) => void;
   deletePort: (swcId: string, portId: string) => void;
   createRunnable: (swcId: string, runnableData: Omit<Runnable, 'id'>) => void;
   updateRunnable: (swcId: string, runnableId: string, updates: Partial<Runnable>) => void;
   deleteRunnable: (swcId: string, runnableId: string) => void;
-  addAccessPoint: (runnableId: string, accessPointData: Omit<AccessPoint, 'id'>) => void;
-  updateAccessPoint: (accessPointId: string, updates: Partial<AccessPoint>) => void;
+  addAccessPoint: (swcId: string, runnableId: string, accessPointData: Omit<AccessPoint, 'id'>) => void;
+  updateAccessPoint: (swcId: string, runnableId: string, accessPointId: string, updates: Partial<AccessPoint>) => void;
   deleteAccessPoint: (swcId: string, runnableId: string, accessPointId: string) => void;
   generateRteAccessPointName: (portName: string, dataElementName: string, accessType: string) => string;
 
@@ -135,6 +151,14 @@ interface AutosarState {
   createConnection: (connectionData: Omit<Connection, 'id'>) => void;
   updateConnection: (connectionId: string, updates: Partial<Connection>) => void;
   deleteConnection: (connectionId: string) => void;
+
+  createECUComposition: (compositionData: Omit<ECUComposition, 'id'>) => void;
+  updateECUComposition: (compositionId: string, updates: Partial<ECUComposition>) => void;
+  deleteECUComposition: (compositionId: string) => void;
+  addSWCInstance: (compositionId: string, swcId: string) => void;
+  removeSWCInstance: (compositionId: string, swcId: string) => void;
+  addECUConnector: (compositionId: string, connectionId: string) => void;
+  removeECUConnector: (compositionId: string, connectionId: string) => void;
 
   exportMultipleArxml: () => void;
 }
@@ -158,6 +182,7 @@ export const useAutosarStore = create<AutosarState>()(
           dataTypes: [],
           connections: [],
           dataElements: [],
+          ecuCompositions: [],
           autosarVersion: '4.2.2',
           isDraft: true,
           lastModified: Date.now(),
@@ -203,6 +228,11 @@ export const useAutosarStore = create<AutosarState>()(
 
       exportArxml: () => {
         get().exportMultipleArxml();
+      },
+
+      importArxml: (file: File) => {
+        // Placeholder for ARXML import functionality
+        console.log('Importing ARXML file:', file.name);
       },
 
       autoSave: () => {
@@ -256,9 +286,8 @@ export const useAutosarStore = create<AutosarState>()(
         }));
       },
 
-      createPort: (portData: Omit<Port, 'id'> & { swcId: string }) => {
-        const { swcId, ...portInfo } = portData;
-        const newPort: Port = { id: uuidv4(), ...portInfo };
+      createPort: (swcId: string, portData: Omit<Port, 'id'>) => {
+        const newPort: Port = { id: uuidv4(), ...portData };
         set(state => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
@@ -269,16 +298,18 @@ export const useAutosarStore = create<AutosarState>()(
         }));
       },
 
-      updatePort: (portId: string, updates: Partial<Port>) => {
+      updatePort: (swcId: string, portId: string, updates: Partial<Port>) => {
         set(state => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
-            swcs: state.currentProject.swcs.map(swc => ({
-              ...swc,
-              ports: (swc.ports || []).map(port =>
-                port.id === portId ? { ...port, ...updates } : port
-              )
-            }))
+            swcs: state.currentProject.swcs.map(swc =>
+              swc.id === swcId ? {
+                ...swc,
+                ports: (swc.ports || []).map(port =>
+                  port.id === portId ? { ...port, ...updates } : port
+                )
+              } : swc
+            )
           } : state.currentProject
         }));
       },
@@ -339,37 +370,43 @@ export const useAutosarStore = create<AutosarState>()(
         }));
       },
 
-      addAccessPoint: (runnableId: string, accessPointData: Omit<AccessPoint, 'id'>) => {
+      addAccessPoint: (swcId: string, runnableId: string, accessPointData: Omit<AccessPoint, 'id'>) => {
         const newAccessPoint: AccessPoint = { id: uuidv4(), ...accessPointData };
         set(state => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
-            swcs: state.currentProject.swcs.map(swc => ({
-              ...swc,
-              runnables: (swc.runnables || []).map(runnable =>
-                runnable.id === runnableId ? {
-                  ...runnable,
-                  accessPoints: [...(runnable.accessPoints || []), newAccessPoint]
-                } : runnable
-              )
-            }))
+            swcs: state.currentProject.swcs.map(swc =>
+              swc.id === swcId ? {
+                ...swc,
+                runnables: (swc.runnables || []).map(runnable =>
+                  runnable.id === runnableId ? {
+                    ...runnable,
+                    accessPoints: [...(runnable.accessPoints || []), newAccessPoint]
+                  } : runnable
+                )
+              } : swc
+            )
           } : state.currentProject
         }));
       },
 
-      updateAccessPoint: (accessPointId: string, updates: Partial<AccessPoint>) => {
+      updateAccessPoint: (swcId: string, runnableId: string, accessPointId: string, updates: Partial<AccessPoint>) => {
         set(state => ({
           currentProject: state.currentProject ? {
             ...state.currentProject,
-            swcs: state.currentProject.swcs.map(swc => ({
-              ...swc,
-              runnables: (swc.runnables || []).map(runnable => ({
-                ...runnable,
-                accessPoints: (runnable.accessPoints || []).map(ap =>
-                  ap.id === accessPointId ? { ...ap, ...updates } : ap
+            swcs: state.currentProject.swcs.map(swc =>
+              swc.id === swcId ? {
+                ...swc,
+                runnables: (swc.runnables || []).map(runnable =>
+                  runnable.id === runnableId ? {
+                    ...runnable,
+                    accessPoints: (runnable.accessPoints || []).map(ap =>
+                      ap.id === accessPointId ? { ...ap, ...updates } : ap
+                    )
+                  } : runnable
                 )
-              }))
-            }))
+              } : swc
+            )
           } : state.currentProject
         }));
       },
@@ -530,6 +567,92 @@ export const useAutosarStore = create<AutosarState>()(
           currentProject: state.currentProject ? {
             ...state.currentProject,
             connections: state.currentProject.connections.filter(connection => connection.id !== connectionId)
+          } : state.currentProject
+        }));
+      },
+
+      createECUComposition: (compositionData: Omit<ECUComposition, 'id'>) => {
+        const newComposition: ECUComposition = { id: uuidv4(), ...compositionData };
+        set(state => ({
+          currentProject: state.currentProject ? {
+            ...state.currentProject,
+            ecuCompositions: [...(state.currentProject.ecuCompositions || []), newComposition]
+          } : state.currentProject
+        }));
+      },
+
+      updateECUComposition: (compositionId: string, updates: Partial<ECUComposition>) => {
+        set(state => ({
+          currentProject: state.currentProject ? {
+            ...state.currentProject,
+            ecuCompositions: (state.currentProject.ecuCompositions || []).map(comp =>
+              comp.id === compositionId ? { ...comp, ...updates } : comp
+            )
+          } : state.currentProject
+        }));
+      },
+
+      deleteECUComposition: (compositionId: string) => {
+        set(state => ({
+          currentProject: state.currentProject ? {
+            ...state.currentProject,
+            ecuCompositions: (state.currentProject.ecuCompositions || []).filter(comp => comp.id !== compositionId)
+          } : state.currentProject
+        }));
+      },
+
+      addSWCInstance: (compositionId: string, swcId: string) => {
+        set(state => ({
+          currentProject: state.currentProject ? {
+            ...state.currentProject,
+            ecuCompositions: (state.currentProject.ecuCompositions || []).map(comp =>
+              comp.id === compositionId ? {
+                ...comp,
+                swcInstances: [...comp.swcInstances, swcId]
+              } : comp
+            )
+          } : state.currentProject
+        }));
+      },
+
+      removeSWCInstance: (compositionId: string, swcId: string) => {
+        set(state => ({
+          currentProject: state.currentProject ? {
+            ...state.currentProject,
+            ecuCompositions: (state.currentProject.ecuCompositions || []).map(comp =>
+              comp.id === compositionId ? {
+                ...comp,
+                swcInstances: comp.swcInstances.filter(id => id !== swcId)
+              } : comp
+            )
+          } : state.currentProject
+        }));
+      },
+
+      addECUConnector: (compositionId: string, connectionId: string) => {
+        set(state => ({
+          currentProject: state.currentProject ? {
+            ...state.currentProject,
+            ecuCompositions: (state.currentProject.ecuCompositions || []).map(comp =>
+              comp.id === compositionId ? {
+                ...comp,
+                connectors: [...comp.connectors, connectionId]
+              } : comp
+            )
+          } : state.currentProject
+        }));
+      },
+
+      removeECUConnector: (compositionId: string, connectionId: string) => {
+        set(state => ({
+          currentProject: state.currentProject ? {
+            ...state.currentProject,
+            ecuCompositions: (state.currentProject.ecuCompositions || []).map(comp =>
+              comp.id === compositionId ? {
+                ...comp,
+                connectors: comp.connectors.filter(id => id !== connectionId)
+              } : comp
+            )
           } : state.currentProject
         }));
       },

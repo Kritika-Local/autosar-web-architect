@@ -1,413 +1,276 @@
+import React, { useState, useCallback } from 'react';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/components/ui/use-toast";
+import { useAutosarStore, Swc, Interface, DataElement, Port } from "@/store/autosarStore";
+import { v4 as uuidv4 } from 'uuid';
+import { Database, FileText, Plus, ArrowDown } from "lucide-react";
 
-import React, { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { useToast } from '@/components/ui/use-toast';
-import { Upload, FileText, Brain, CheckCircle, XCircle, Edit } from 'lucide-react';
-import { useAutosarStore } from '@/store/autosarStore';
-import RequirementValidationDialog from '@/components/RequirementValidationDialog';
+interface Requirement {
+  id: string;
+  description: string;
+  componentName: string;
+  interfaceName: string;
+  dataElement: string;
+  dataType: string;
+  portName: string;
+  portDirection: 'required' | 'provided';
+}
 
 interface ParsedRequirement {
-  id: string;
-  originalText: string;
-  interpretation: {
-    swcs: Array<{
-      name: string;
-      category: 'application' | 'service' | 'ecu-abstraction' | 'complex-driver' | 'sensor-actuator';
-    }>;
-    interfaces: Array<{
-      name: string;
-      dataElements: Array<{
-        name: string;
-        dataType: string;
-        size?: string;
-      }>;
-    }>;
-    connections: Array<{
-      sourceSWC: string;
-      targetSWC: string;
-      portInterface: string;
-    }>;
-    runnables: Array<{
-      swcName: string;
-      name: string;
-      period: number;
-      accessPoints: Array<{
-        type: 'read' | 'write';
-        portName: string;
-        dataElement: string;
-      }>;
-    }>;
-  };
-  status: 'pending' | 'accepted' | 'rejected' | 'needs_correction';
+  swc: Omit<Swc, 'id'>;
+  interface_: Omit<Interface, 'id'>;
+  dataElements: DataElement[];
+  port: Omit<Port, 'id'>;
 }
 
 const RequirementImporter = () => {
   const { toast } = useToast();
-  const { currentProject, createProject, createSWC, createInterface, createDataType } = useAutosarStore();
-  
-  const [file, setFile] = useState<File | null>(null);
-  const [requirementText, setRequirementText] = useState('');
-  const [parsedRequirements, setParsedRequirements] = useState<ParsedRequirement[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [showValidation, setShowValidation] = useState(false);
+  const { currentProject, createSWC, createInterface, createPort } = useAutosarStore();
+  const [requirementsText, setRequirementsText] = useState('');
+  const [requirements, setRequirements] = useState<Requirement[]>([]);
+  const [isParsing, setIsParsing] = useState(false);
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const uploadedFile = event.target.files?.[0];
-    if (uploadedFile) {
-      const validTypes = [
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-powerpoint',
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      ];
-      
-      if (validTypes.includes(uploadedFile.type)) {
-        setFile(uploadedFile);
-        toast({
-          title: "File Selected",
-          description: `${uploadedFile.name} is ready for processing`,
-        });
-      } else {
-        toast({
-          title: "Invalid File Type",
-          description: "Please select a .doc, .docx, .ppt, .pptx, .xls, or .xlsx file",
-          variant: "destructive",
-        });
-      }
-    }
-  };
-
-  const parseRequirementText = (text: string): ParsedRequirement => {
-    // AI-based parsing logic - simplified for demo
-    const requirement: ParsedRequirement = {
-      id: crypto.randomUUID(),
-      originalText: text,
-      interpretation: {
-        swcs: [],
-        interfaces: [],
-        connections: [],
-        runnables: []
-      },
-      status: 'pending'
-    };
-
-    // Example parsing for "SWC1 shall send 2 bytes of temperature value to SWC2"
-    const swcPattern = /(\w+)\s+shall\s+send.*?to\s+(\w+)/i;
-    const dataPattern = /(\d+)\s+bytes?\s+of\s+(\w+)/i;
-    
-    const swcMatch = text.match(swcPattern);
-    const dataMatch = text.match(dataPattern);
-    
-    if (swcMatch && dataMatch) {
-      const [, sourceSWC, targetSWC] = swcMatch;
-      const [, byteSize, dataName] = dataMatch;
-      
-      // Create SWCs
-      requirement.interpretation.swcs = [
-        { name: sourceSWC, category: 'application' },
-        { name: targetSWC, category: 'application' }
-      ];
-      
-      // Create interface
-      const interfaceName = `${sourceSWC}_${targetSWC}_port_interface`;
-      const dataElementName = `${dataName}_${byteSize}Byte`;
-      
-      requirement.interpretation.interfaces = [{
-        name: interfaceName,
-        dataElements: [{
-          name: dataElementName,
-          dataType: `uint${parseInt(byteSize) * 8}`,
-          size: byteSize
-        }]
-      }];
-      
-      // Create connection
-      requirement.interpretation.connections = [{
-        sourceSWC,
-        targetSWC,
-        portInterface: interfaceName
-      }];
-      
-      // Create runnables with access points
-      requirement.interpretation.runnables = [
-        {
-          swcName: sourceSWC,
-          name: `${sourceSWC}_init`,
-          period: 0,
-          accessPoints: []
-        },
-        {
-          swcName: sourceSWC,
-          name: `${sourceSWC}_10ms`,
-          period: 10,
-          accessPoints: [{
-            type: 'write',
-            portName: `${sourceSWC}_P_port`,
-            dataElement: dataElementName
-          }]
-        },
-        {
-          swcName: targetSWC,
-          name: `${targetSWC}_init`,
-          period: 0,
-          accessPoints: []
-        },
-        {
-          swcName: targetSWC,
-          name: `${targetSWC}_10ms`,
-          period: 10,
-          accessPoints: [{
-            type: 'read',
-            portName: `${targetSWC}_R_port`,
-            dataElement: dataElementName
-          }]
-        }
-      ];
-    }
-    
-    return requirement;
-  };
-
-  const processRequirement = async () => {
-    setIsProcessing(true);
-    
+  const parseRequirements = useCallback(() => {
+    setIsParsing(true);
     try {
-      let textToProcess = requirementText;
-      
-      // If file is uploaded, simulate extraction (in real implementation, this would use AI)
-      if (file) {
-        textToProcess = "SWC1 shall send 2 bytes of temperature value to SWC2.";
-        toast({
-          title: "File Processed",
-          description: "Requirements extracted from document",
-        });
-      }
-      
-      if (!textToProcess.trim()) {
-        toast({
-          title: "No Content",
-          description: "Please provide requirement text or upload a file",
-          variant: "destructive",
-        });
-        return;
-      }
-      
-      const parsed = parseRequirementText(textToProcess);
-      setParsedRequirements([parsed]);
-      setShowValidation(true);
-      
+      const parsed = JSON.parse(requirementsText) as Requirement[];
+      setRequirements(parsed);
+      toast({
+        title: "Requirements Parsed",
+        description: `${parsed.length} requirements parsed successfully`,
+      });
     } catch (error) {
       toast({
-        title: "Processing Error",
-        description: "Failed to process requirements",
+        title: "Parse Error",
+        description: "Failed to parse requirements. Please ensure the JSON is valid.",
         variant: "destructive",
       });
     } finally {
-      setIsProcessing(false);
+      setIsParsing(false);
+    }
+  }, [requirementsText, toast]);
+
+  const handleImportRequirements = async () => {
+    if (!currentProject) {
+      toast({
+        title: "No Project",
+        description: "Please create or load a project first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (requirements.length === 0) {
+      toast({
+        title: "No Requirements",
+        description: "Please parse requirements first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      for (const requirement of requirements) {
+        const parsed = parseRequirement(requirement);
+        
+        // Create SWC if it doesn't exist
+        let swc = currentProject.swcs.find(swc => swc.name === requirement.componentName);
+        if (!swc) {
+          createSWC(parsed.swc);
+          toast({
+            title: "SWC Created",
+            description: `SWC ${requirement.componentName} created successfully`,
+          });
+        }
+
+        // Create Interface if it doesn't exist
+        let interface_ = currentProject.interfaces.find(iface => iface.name === requirement.interfaceName);
+        if (!interface_) {
+          createInterface(parsed.interface_);
+          toast({
+            title: "Interface Created",
+            description: `Interface ${requirement.interfaceName} created successfully`,
+          });
+        }
+
+        // Create Port if it doesn't exist
+        swc = currentProject.swcs.find(swc => swc.name === requirement.componentName);
+        if (swc) {
+          let port = swc.ports?.find(port => port.name === requirement.portName);
+          if (!port) {
+            createPort({
+              swcId: swc.id,
+              ...parsed.port
+            });
+            toast({
+              title: "Port Created",
+              description: `Port ${requirement.portName} created successfully`,
+            });
+          }
+        }
+      }
+
+      toast({
+        title: "Requirements Imported",
+        description: `${requirements.length} requirements imported successfully`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Import Error",
+        description: `Failed to import requirements: ${error.message}`,
+        variant: "destructive",
+      });
     }
   };
 
-  const handleRequirementValidation = (requirements: ParsedRequirement[]) => {
-    // Generate AUTOSAR artifacts for accepted requirements
-    const acceptedRequirements = requirements.filter(req => req.status === 'accepted');
+  const parseRequirement = (requirement: Requirement): ParsedRequirement => {
+    const swc: Omit<Swc, 'id'> = {
+      name: requirement.componentName,
+      description: `Component for ${requirement.description}`,
+      category: 'application',
+      type: 'atomic',
+    };
     
-    acceptedRequirements.forEach(req => {
-      // Create data types first
-      req.interpretation.interfaces.forEach(iface => {
-        iface.dataElements.forEach(de => {
-          const baseType = de.dataType.includes('uint') ? de.dataType : 'uint8';
-          createDataType({
-            name: de.dataType,
-            category: 'primitive',
-            baseType,
-            description: `Auto-generated from requirement: ${req.originalText.substring(0, 50)}...`
-          });
-        });
-      });
-      
-      // Create interfaces
-      req.interpretation.interfaces.forEach(iface => {
-        createInterface({
-          name: iface.name,
-          type: 'SenderReceiver',
-          dataElements: iface.dataElements.map(de => ({
-            id: crypto.randomUUID(),
-            name: de.name,
-            applicationDataTypeRef: de.dataType,
-            description: 'Auto-generated from requirements'
-          }))
-        });
-      });
-      
-      // Create SWCs with ports and runnables
-      req.interpretation.swcs.forEach(swcData => {
-        createSWC({
-          name: swcData.name,
-          description: `Auto-generated from requirement: ${req.originalText}`,
-          category: swcData.category,
-          type: 'atomic'
-        });
-      });
-    });
-    
-    toast({
-      title: "Requirements Processed",
-      description: `Generated AUTOSAR artifacts for ${acceptedRequirements.length} requirements`,
-    });
-    
-    setShowValidation(false);
-    setParsedRequirements([]);
+    const interface_: Omit<Interface, 'id'> = {
+      name: requirement.interfaceName,
+      type: 'SenderReceiver',
+      dataElements: [],
+    };
+
+    const dataElements: DataElement[] = [
+      {
+        id: uuidv4(),
+        name: requirement.dataElement || 'DefaultDataElement',
+        applicationDataTypeRef: requirement.dataType || 'uint32',
+        category: 'VALUE',
+        description: `Data element for ${requirement.description}`,
+      }
+    ];
+
+    const port: Omit<Port, 'id'> = {
+      name: requirement.portName,
+      direction: requirement.portDirection,
+      interfaceRef: requirement.interfaceName,
+    };
+
+    return { swc, interface_, dataElements, port };
   };
 
+  if (!currentProject) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="text-center py-12">
+          <Database className="h-16 w-16 mx-auto mb-4 opacity-50" />
+          <h2 className="text-2xl font-bold mb-2">No Project Loaded</h2>
+          <p className="text-muted-foreground mb-4">
+            Please create or load a project to import requirements
+          </p>
+          <Button onClick={() => window.location.href = '/projects'}>
+            Go to Projects
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Requirement Document Importer</h1>
-          <p className="text-muted-foreground mt-2">
-            Import and analyze requirement documents to auto-generate AUTOSAR artifacts
+          <h1 className="text-3xl font-bold text-foreground">Requirement Importer</h1>
+          <p className="text-muted-foreground mt-1">
+            Import requirements from a JSON file to create SWCs, Interfaces, and Ports
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* File Upload Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Upload className="h-5 w-5" />
-              Document Upload
-            </CardTitle>
-            <CardDescription>
-              Upload requirement documents (.doc, .docx, .ppt, .pptx, .xls, .xlsx)
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="file-upload">Select Document</Label>
-              <Input
-                id="file-upload"
-                type="file"
-                accept=".doc,.docx,.ppt,.pptx,.xls,.xlsx"
-                onChange={handleFileUpload}
-                className="mt-2"
-              />
-            </div>
-            
-            {file && (
-              <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-                <FileText className="h-4 w-4" />
-                <span className="text-sm">{file.name}</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Manual Text Input Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Edit className="h-5 w-5" />
-              Manual Requirements
-            </CardTitle>
-            <CardDescription>
-              Enter requirement text manually for AI analysis
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="requirement-text">Requirement Text</Label>
-              <Textarea
-                id="requirement-text"
-                placeholder="e.g., SWC1 shall send 2 bytes of temperature value to SWC2."
-                value={requirementText}
-                onChange={(e) => setRequirementText(e.target.value)}
-                className="mt-2 min-h-[120px]"
-              />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* AI Processing Section */}
-      <Card>
+      <Card className="autosar-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Brain className="h-5 w-5" />
-            AI-Based Analysis
+            <FileText className="h-5 w-5" />
+            Requirements JSON
           </CardTitle>
           <CardDescription>
-            Process requirements to automatically generate AUTOSAR artifacts
+            Paste your requirements JSON here
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Button 
-            onClick={processRequirement} 
-            disabled={isProcessing || (!file && !requirementText.trim())}
-            className="w-full"
-          >
-            {isProcessing ? 'Processing...' : 'Analyze Requirements'}
+        <CardContent className="space-y-4">
+          <Textarea
+            placeholder="[
+              {
+                &quot;id&quot;: &quot;REQ-1&quot;,
+                &quot;description&quot;: &quot;Engine speed shall be measured&quot;,
+                &quot;componentName&quot;: &quot;EngineController&quot;,
+                &quot;interfaceName&quot;: &quot;EngineSpeedInterface&quot;,
+                &quot;dataElement&quot;: &quot;EngineSpeed&quot;,
+                &quot;dataType&quot;: &quot;uint16&quot;,
+                &quot;portName&quot;: &quot;EngineSpeedPort&quot;,
+                &quot;portDirection&quot;: &quot;provided&quot;
+              }
+            ]"
+            value={requirementsText}
+            onChange={(e) => setRequirementsText(e.target.value)}
+            rows={8}
+          />
+          <Button onClick={parseRequirements} disabled={isParsing} className="autosar-button">
+            {isParsing ? "Parsing..." : "Parse Requirements"}
           </Button>
         </CardContent>
       </Card>
 
-      {/* Results Preview */}
-      {parsedRequirements.length > 0 && (
-        <Card>
+      {requirements.length > 0 && (
+        <Card className="autosar-card">
           <CardHeader>
-            <CardTitle>Analysis Results</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <ArrowDown className="h-5 w-5" />
+              Parsed Requirements
+            </CardTitle>
             <CardDescription>
-              Review the interpreted AUTOSAR artifacts before generation
+              Review the parsed requirements before importing
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            {parsedRequirements.map((req) => (
-              <div key={req.id} className="border rounded-lg p-4 space-y-3">
-                <div className="flex items-start gap-3">
-                  <div className="flex-1">
-                    <h4 className="font-medium">Original Requirement:</h4>
-                    <p className="text-sm text-muted-foreground mt-1">{req.originalText}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {req.status === 'accepted' && <CheckCircle className="h-5 w-5 text-green-500" />}
-                    {req.status === 'rejected' && <XCircle className="h-5 w-5 text-red-500" />}
-                    {req.status === 'pending' && <Edit className="h-5 w-5 text-yellow-500" />}
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <strong>SWCs:</strong> {req.interpretation.swcs.map(s => s.name).join(', ')}
-                  </div>
-                  <div>
-                    <strong>Interfaces:</strong> {req.interpretation.interfaces.map(i => i.name).join(', ')}
-                  </div>
-                </div>
+          <CardContent className="space-y-4">
+            {requirements.map((req, index) => (
+              <div key={index} className="border rounded-md p-4 space-y-2">
+                <p><strong>ID:</strong> {req.id}</p>
+                <p><strong>Description:</strong> {req.description}</p>
+                <p><strong>Component:</strong> {req.componentName}</p>
+                <p><strong>Interface:</strong> {req.interfaceName}</p>
+                <p><strong>Data Element:</strong> {req.dataElement}</p>
+                <p><strong>Data Type:</strong> {req.dataType}</p>
+                <p><strong>Port:</strong> {req.portName} ({req.portDirection})</p>
               </div>
             ))}
-            
-            <Button 
-              onClick={() => setShowValidation(true)}
-              className="w-full mt-4"
-            >
-              Review & Validate
+            <Button onClick={handleImportRequirements} className="autosar-button">
+              Import Requirements
             </Button>
           </CardContent>
         </Card>
       )}
 
-      <RequirementValidationDialog
-        open={showValidation}
-        onOpenChange={setShowValidation}
-        requirements={parsedRequirements}
-        onValidationComplete={handleRequirementValidation}
-      />
+      {requirements.length === 0 && (
+        <Card className="autosar-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Requirement Importer
+            </CardTitle>
+            <CardDescription>
+              Import requirements from a JSON file
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center py-12 text-muted-foreground">
+              <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No requirements to display</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

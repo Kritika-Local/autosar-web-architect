@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -70,10 +69,6 @@ const DataElementEditor = () => {
       description,
       category,
       applicationDataTypeRef,
-      swDataDefProps: {
-        baseTypeRef: applicationDataTypeRef,
-        implementationDataTypeRef: `${applicationDataTypeRef}_Impl`
-      }
     };
 
     if (editingDataElement) {
@@ -130,10 +125,6 @@ const DataElementEditor = () => {
       description: wizardData.dataElement.description,
       category: wizardData.dataElement.category,
       applicationDataTypeRef: wizardData.dataElement.applicationDataTypeRef,
-      swDataDefProps: {
-        baseTypeRef: wizardData.dataElement.applicationDataTypeRef,
-        implementationDataTypeRef: `${wizardData.dataElement.applicationDataTypeRef}_Impl`
-      }
     };
 
     createDataElement(dataElementData);
@@ -304,12 +295,6 @@ const DataElementEditor = () => {
                   <span className="text-muted-foreground">App Data Type:</span>
                   <span className="font-medium">{dataElement.applicationDataTypeRef}</span>
                 </div>
-                {dataElement.swDataDefProps?.implementationDataTypeRef && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Impl Data Type:</span>
-                    <span className="font-medium">{dataElement.swDataDefProps.implementationDataTypeRef}</span>
-                  </div>
-                )}
               </div>
             </CardContent>
           </Card>
