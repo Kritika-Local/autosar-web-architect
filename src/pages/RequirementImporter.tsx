@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -5,9 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAutosarStore, Swc, Interface, DataElement, Port } from "@/store/autosarStore";
 import { v4 as uuidv4 } from 'uuid';
-import { Database, FileText, Plus, ArrowDown } from "lucide-react";
+import { Database, FileText, Plus, ArrowDown, Upload } from "lucide-react";
 
 interface Requirement {
   id: string;
@@ -29,10 +31,37 @@ interface ParsedRequirement {
 
 const RequirementImporter = () => {
   const { toast } = useToast();
-  const { currentProject, createSWC, createInterface, createPort } = useAutosarStore();
+  const { projects, currentProject, createProject, loadProject, createSWC, createInterface, createPort } = useAutosarStore();
   const [requirementsText, setRequirementsText] = useState('');
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [isParsing, setIsParsing] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [createNewProject, setCreateNewProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+
+  // Sample requirement format for user reference
+  const sampleRequirements = `[
+  {
+    "id": "REQ-001",
+    "description": "Engine speed shall be measured and transmitted",
+    "componentName": "EngineController",
+    "interfaceName": "EngineSpeedInterface",
+    "dataElement": "EngineSpeed",
+    "dataType": "uint16",
+    "portName": "EngineSpeedPort",
+    "portDirection": "provided"
+  },
+  {
+    "id": "REQ-002", 
+    "description": "Vehicle speed shall be received and processed",
+    "componentName": "SpeedController",
+    "interfaceName": "VehicleSpeedInterface",
+    "dataElement": "VehicleSpeed",
+    "dataType": "uint32",
+    "portName": "VehicleSpeedPort",
+    "portDirection": "required"
+  }
+]`;
 
   const parseRequirements = useCallback(() => {
     setIsParsing(true);
@@ -55,19 +84,61 @@ const RequirementImporter = () => {
   }, [requirementsText, toast]);
 
   const handleImportRequirements = async () => {
-    if (!currentProject) {
+    if (requirements.length === 0) {
       toast({
-        title: "No Project",
-        description: "Please create or load a project first",
+        title: "No Requirements",
+        description: "Please parse requirements first",
         variant: "destructive",
       });
       return;
     }
 
-    if (requirements.length === 0) {
+    let targetProject = currentProject;
+
+    // If no current project, create new or load existing
+    if (!targetProject) {
+      if (createNewProject) {
+        if (!newProjectName.trim()) {
+          toast({
+            title: "Project Name Required",
+            description: "Please enter a name for the new project",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        createProject({
+          name: newProjectName,
+          description: `Project created from requirement import - ${new Date().toLocaleDateString()}`,
+          autosarVersion: "4.3.1",
+          swcs: [],
+          interfaces: [],
+          dataTypes: [],
+          dataElements: [],
+          connections: [],
+          ecuCompositions: [],
+          isDraft: true,
+          autoSaveEnabled: true,
+        });
+
+        targetProject = projects[projects.length - 1];
+      } else if (selectedProjectId) {
+        loadProject(selectedProjectId);
+        targetProject = projects.find(p => p.id === selectedProjectId) || null;
+      } else {
+        toast({
+          title: "No Project Selected",
+          description: "Please select an existing project or create a new one",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    if (!targetProject) {
       toast({
-        title: "No Requirements",
-        description: "Please parse requirements first",
+        title: "Project Error",
+        description: "Unable to load or create project",
         variant: "destructive",
       });
       return;
@@ -78,37 +149,25 @@ const RequirementImporter = () => {
         const parsed = parseRequirement(requirement);
         
         // Create SWC if it doesn't exist
-        let swc = currentProject.swcs.find(swc => swc.name === requirement.componentName);
+        let swc = targetProject.swcs.find(swc => swc.name === requirement.componentName);
         if (!swc) {
           createSWC(parsed.swc);
-          toast({
-            title: "SWC Created",
-            description: `SWC ${requirement.componentName} created successfully`,
-          });
         }
 
         // Create Interface if it doesn't exist
-        let interface_ = currentProject.interfaces.find(iface => iface.name === requirement.interfaceName);
+        let interface_ = targetProject.interfaces.find(iface => iface.name === requirement.interfaceName);
         if (!interface_) {
           createInterface(parsed.interface_);
-          toast({
-            title: "Interface Created",
-            description: `Interface ${requirement.interfaceName} created successfully`,
-          });
         }
 
         // Create Port if it doesn't exist
-        swc = currentProject.swcs.find(swc => swc.name === requirement.componentName);
+        swc = targetProject.swcs.find(swc => swc.name === requirement.componentName);
         if (swc) {
           let port = swc.ports?.find(port => port.name === requirement.portName);
           if (!port) {
             createPort({
               swcId: swc.id,
               ...parsed.port
-            });
-            toast({
-              title: "Port Created",
-              description: `Port ${requirement.portName} created successfully`,
             });
           }
         }
@@ -118,6 +177,14 @@ const RequirementImporter = () => {
         title: "Requirements Imported",
         description: `${requirements.length} requirements imported successfully`,
       });
+
+      // Clear form
+      setRequirements([]);
+      setRequirementsText('');
+      setSelectedProjectId('');
+      setCreateNewProject(false);
+      setNewProjectName('');
+
     } catch (error: any) {
       toast({
         title: "Import Error",
@@ -160,22 +227,28 @@ const RequirementImporter = () => {
     return { swc, interface_, dataElements, port };
   };
 
-  if (!currentProject) {
-    return (
-      <div className="space-y-6 animate-fade-in">
-        <div className="text-center py-12">
-          <Database className="h-16 w-16 mx-auto mb-4 opacity-50" />
-          <h2 className="text-2xl font-bold mb-2">No Project Loaded</h2>
-          <p className="text-muted-foreground mb-4">
-            Please create or load a project to import requirements
-          </p>
-          <Button onClick={() => window.location.href = '/projects'}>
-            Go to Projects
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && (file.type === 'application/json' || file.name.endsWith('.json') || file.name.endsWith('.txt'))) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const content = e.target?.result as string;
+        setRequirementsText(content);
+      };
+      reader.readAsText(file);
+      
+      toast({
+        title: "File Loaded",
+        description: `${file.name} has been loaded`,
+      });
+    } else {
+      toast({
+        title: "Invalid File",
+        description: "Please select a JSON or text file",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -183,11 +256,103 @@ const RequirementImporter = () => {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Requirement Importer</h1>
           <p className="text-muted-foreground mt-1">
-            Import requirements from a JSON file to create SWCs, Interfaces, and Ports
+            Import requirements from JSON to create SWCs, Interfaces, and Ports
           </p>
         </div>
       </div>
 
+      {/* Project Selection */}
+      <Card className="autosar-card">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-5 w-5" />
+            Target Project
+          </CardTitle>
+          <CardDescription>
+            Select a project to import requirements into
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {currentProject ? (
+            <div className="p-4 bg-primary/10 rounded-lg">
+              <h3 className="font-medium text-primary">Current Project: {currentProject.name}</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Requirements will be imported into this project
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="radio"
+                  id="existing"
+                  name="projectOption"
+                  checked={!createNewProject}
+                  onChange={() => setCreateNewProject(false)}
+                />
+                <Label htmlFor="existing">Use existing project</Label>
+              </div>
+              
+              {!createNewProject && (
+                <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name} - {project.autosarVersion}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
+              <div className="flex items-center space-x-2">
+                <input
+                  type="radio"
+                  id="new"
+                  name="projectOption"
+                  checked={createNewProject}
+                  onChange={() => setCreateNewProject(true)}
+                />
+                <Label htmlFor="new">Create new project</Label>
+              </div>
+
+              {createNewProject && (
+                <Input
+                  placeholder="Enter new project name"
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                />
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* File Upload */}
+      <Card className="autosar-card">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Upload className="h-5 w-5" />
+            Upload Requirements File
+          </CardTitle>
+          <CardDescription>
+            Upload a JSON file containing your requirements
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Input
+            type="file"
+            accept=".json,.txt"
+            onChange={handleFileUpload}
+            className="mb-4"
+          />
+        </CardContent>
+      </Card>
+
+      {/* Manual Input */}
       <Card className="autosar-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -195,79 +360,79 @@ const RequirementImporter = () => {
             Requirements JSON
           </CardTitle>
           <CardDescription>
-            Paste your requirements JSON here
+            Paste or edit your requirements JSON here
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Textarea
-            placeholder="[
-              {
-                &quot;id&quot;: &quot;REQ-1&quot;,
-                &quot;description&quot;: &quot;Engine speed shall be measured&quot;,
-                &quot;componentName&quot;: &quot;EngineController&quot;,
-                &quot;interfaceName&quot;: &quot;EngineSpeedInterface&quot;,
-                &quot;dataElement&quot;: &quot;EngineSpeed&quot;,
-                &quot;dataType&quot;: &quot;uint16&quot;,
-                &quot;portName&quot;: &quot;EngineSpeedPort&quot;,
-                &quot;portDirection&quot;: &quot;provided&quot;
-              }
-            ]"
+            placeholder={sampleRequirements}
             value={requirementsText}
             onChange={(e) => setRequirementsText(e.target.value)}
-            rows={8}
+            rows={12}
+            className="font-mono text-sm"
           />
-          <Button onClick={parseRequirements} disabled={isParsing} className="autosar-button">
-            {isParsing ? "Parsing..." : "Parse Requirements"}
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={parseRequirements} disabled={isParsing} className="autosar-button">
+              {isParsing ? "Parsing..." : "Parse Requirements"}
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => setRequirementsText(sampleRequirements)}
+            >
+              Load Sample
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
+      {/* Parsed Requirements */}
       {requirements.length > 0 && (
         <Card className="autosar-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ArrowDown className="h-5 w-5" />
-              Parsed Requirements
+              Parsed Requirements ({requirements.length})
             </CardTitle>
             <CardDescription>
               Review the parsed requirements before importing
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {requirements.map((req, index) => (
-              <div key={index} className="border rounded-md p-4 space-y-2">
-                <p><strong>ID:</strong> {req.id}</p>
-                <p><strong>Description:</strong> {req.description}</p>
-                <p><strong>Component:</strong> {req.componentName}</p>
-                <p><strong>Interface:</strong> {req.interfaceName}</p>
-                <p><strong>Data Element:</strong> {req.dataElement}</p>
-                <p><strong>Data Type:</strong> {req.dataType}</p>
-                <p><strong>Port:</strong> {req.portName} ({req.portDirection})</p>
-              </div>
-            ))}
-            <Button onClick={handleImportRequirements} className="autosar-button">
-              Import Requirements
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {requirements.length === 0 && (
-        <Card className="autosar-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              Requirement Importer
-            </CardTitle>
-            <CardDescription>
-              Import requirements from a JSON file
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-12 text-muted-foreground">
-              <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No requirements to display</p>
+            <div className="max-h-96 overflow-y-auto space-y-3">
+              {requirements.map((req, index) => (
+                <div key={index} className="border rounded-md p-4 space-y-2 bg-muted/20">
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold">{req.id}</p>
+                    <span className={`px-2 py-1 text-xs rounded ${
+                      req.portDirection === 'provided' 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {req.portDirection}
+                    </span>
+                  </div>
+                  <p className="text-sm">{req.description}</p>
+                  <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
+                    <div>
+                      <strong>Component:</strong> {req.componentName}
+                    </div>
+                    <div>
+                      <strong>Interface:</strong> {req.interfaceName}
+                    </div>
+                    <div>
+                      <strong>Data Element:</strong> {req.dataElement}
+                    </div>
+                    <div>
+                      <strong>Type:</strong> {req.dataType}
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
+            <Button onClick={handleImportRequirements} className="autosar-button w-full">
+              <Plus className="h-4 w-4 mr-2" />
+              Import {requirements.length} Requirements
+            </Button>
           </CardContent>
         </Card>
       )}
