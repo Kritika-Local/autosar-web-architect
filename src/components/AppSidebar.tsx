@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { Circle, Square, Plus, Folder, Database, Cable, Settings, Hash, BarChart3, FolderOpen, Download, Layers } from "lucide-react";
+import { Circle, Square, Plus, Folder, Database, Cable, Settings, Hash, BarChart3, FolderOpen, Download, Layers, FileText } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAutosarStore } from "@/store/autosarStore";
 
@@ -20,6 +20,7 @@ import {
 const mainItems = [
   { title: "Dashboard", url: "/dashboard", icon: BarChart3 },
   { title: "Projects", url: "/projects", icon: Folder },
+  { title: "Requirement Importer", url: "/requirement-importer", icon: FileText },
 ];
 
 const designItems = [
