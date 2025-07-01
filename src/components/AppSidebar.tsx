@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { Circle, Square, Plus, Folder, Database, Cable, Settings, Hash, BarChart3, FolderOpen, Download } from "lucide-react";
+import { Circle, Square, Plus, Folder, Database, Cable, Settings, Hash, BarChart3, FolderOpen, Download, Layers } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAutosarStore } from "@/store/autosarStore";
 
@@ -23,6 +23,7 @@ const mainItems = [
 ];
 
 const designItems = [
+  { title: "ECU Composition", url: "/ecu-composition", icon: Layers },
   { title: "SWC Builder", url: "/swc-builder", icon: Square },
   { title: "Port & Interface Editor", url: "/port-editor", icon: Cable },
   { title: "Data Types", url: "/data-types", icon: Database },
@@ -33,7 +34,7 @@ const designItems = [
 export function AppSidebar() {
   const { state } = useSidebar();
   const location = useLocation();
-  const { projects, exportMultipleArxml } = useAutosarStore();
+  const { projects, exportMultipleArxml, currentProject, autoSave } = useAutosarStore();
   const currentPath = location.pathname;
   
   const [recentProjectsOpen, setRecentProjectsOpen] = useState(false);
@@ -46,7 +47,21 @@ export function AppSidebar() {
     isActive ? "bg-muted text-primary font-medium" : "hover:bg-muted/50";
 
   const handleExportArxml = () => {
+    if (!currentProject) {
+      console.warn('No project loaded for export');
+      return;
+    }
+    
+    // Auto-save before export
+    autoSave();
     exportMultipleArxml();
+  };
+
+  const handleSaveProject = () => {
+    if (currentProject) {
+      autoSave();
+      console.log('Project saved successfully');
+    }
   };
 
   return (
@@ -100,20 +115,28 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Export Section */}
-        <SidebarGroup>
-          <SidebarGroupLabel>Export</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton onClick={handleExportArxml}>
-                  <Download className="mr-2 h-4 w-4" />
-                  {state !== "collapsed" && <span>Export ARXML</span>}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {/* Project Actions */}
+        {currentProject && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Project Actions</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton onClick={handleSaveProject}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    {state !== "collapsed" && <span>Save Project</span>}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton onClick={handleExportArxml}>
+                    <Download className="mr-2 h-4 w-4" />
+                    {state !== "collapsed" && <span>Export ARXML</span>}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         {/* Recent Projects */}
         {projects.length > 0 && (
