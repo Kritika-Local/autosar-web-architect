@@ -1051,7 +1051,7 @@ export const useAutosarStore = create<AutosarStore>()(
         const files = [
           // Individual SWC files
           ...project.swcs.map(swc => ({
-            name: `${swc.name}.arxml`,
+            name: `${swc.name.toLowerCase()}.arxml`,
             content: get().generateSWCArxml(swc, project)
           })),
           // System files
@@ -1059,6 +1059,7 @@ export const useAutosarStore = create<AutosarStore>()(
           { name: 'constants.arxml', content: get().generateConstantsArxml(project) },
           { name: 'packages.arxml', content: get().generatePackagesArxml(project) },
           { name: 'portinterfaces.arxml', content: get().generatePortInterfacesArxml(project) },
+          { name: 'ecucomposition.arxml', content: get().generateECUCompositionArxml(project.ecuCompositions[0], project) },
           { name: 'systemextract.arxml', content: get().generateSystemExtractArxml(project) }
         ];
         
@@ -1094,11 +1095,14 @@ export const useAutosarStore = create<AutosarStore>()(
           <SHORT-NAME>${swc.name}</SHORT-NAME>
           <CATEGORY>${swc.category.toUpperCase()}</CATEGORY>
           <PORTS>
-            ${swc.ports.map(port => `
-            <${port.direction.toUpperCase()}-PORT>
+            ${swc.ports.map(port => {
+              const interface_ = project.interfaces.find(i => i.id === port.interfaceRef);
+              return `
+            <${port.direction.toUpperCase() === 'PROVIDED' ? 'P' : 'R'}-PORT-PROTOTYPE>
               <SHORT-NAME>${port.name}</SHORT-NAME>
-              <PROVIDED-REQUIRED-INTERFACE-TREF DEST="SENDER-RECEIVER-INTERFACE">/PortInterfaces/${port.interfaceRef}</PROVIDED-REQUIRED-INTERFACE-TREF>
-            </${port.direction.toUpperCase()}-PORT>`).join('')}
+              <PROVIDED-REQUIRED-INTERFACE-TREF DEST="SENDER-RECEIVER-INTERFACE">/PortInterfaces/${interface_?.name || 'UnknownInterface'}</PROVIDED-REQUIRED-INTERFACE-TREF>
+            </${port.direction.toUpperCase() === 'PROVIDED' ? 'P' : 'R'}-PORT-PROTOTYPE>`;
+            }).join('')}
           </PORTS>
           <INTERNAL-BEHAVIORS>
             <SWC-INTERNAL-BEHAVIOR>
@@ -1108,11 +1112,8 @@ export const useAutosarStore = create<AutosarStore>()(
                 <RUNNABLE-ENTITY>
                   <SHORT-NAME>${runnable.name}</SHORT-NAME>
                   <CAN-BE-INVOKED-CONCURRENTLY>${runnable.canBeInvokedConcurrently}</CAN-BE-INVOKED-CONCURRENTLY>
-                  ${runnable.runnableType === 'periodic' && runnable.period ? `
-                  <MINIMUM-START-INTERVAL>${runnable.period / 1000}</MINIMUM-START-INTERVAL>` : ''}
                   <DATA-READ-ACCESSS>
                     ${runnable.accessPoints.filter(ap => ap.type === 'iRead').map(ap => {
-                      const port = swc.ports.find(p => p.id === ap.portRef);
                       return `
                     <VARIABLE-ACCESS>
                       <SHORT-NAME>${ap.name}</SHORT-NAME>
@@ -1129,7 +1130,6 @@ export const useAutosarStore = create<AutosarStore>()(
                   </DATA-READ-ACCESSS>
                   <DATA-WRITE-ACCESSS>
                     ${runnable.accessPoints.filter(ap => ap.type === 'iWrite').map(ap => {
-                      const port = swc.ports.find(p => p.id === ap.portRef);
                       return `
                     <VARIABLE-ACCESS>
                       <SHORT-NAME>${ap.name}</SHORT-NAME>
@@ -1172,10 +1172,10 @@ export const useAutosarStore = create<AutosarStore>()(
             ${swc.ports.map(port => {
               const interface_ = project.interfaces.find(i => i.id === port.interfaceRef);
               return `
-            <${port.direction.toUpperCase()}-PORT>
+            <${port.direction.toUpperCase() === 'PROVIDED' ? 'P' : 'R'}-PORT-PROTOTYPE>
               <SHORT-NAME>${port.name}</SHORT-NAME>
               <PROVIDED-REQUIRED-INTERFACE-TREF DEST="SENDER-RECEIVER-INTERFACE">/PortInterfaces/${interface_?.name || 'UnknownInterface'}</PROVIDED-REQUIRED-INTERFACE-TREF>
-            </${port.direction.toUpperCase()}-PORT>`;
+            </${port.direction.toUpperCase() === 'PROVIDED' ? 'P' : 'R'}-PORT-PROTOTYPE>`;
             }).join('')}
           </PORTS>
           <INTERNAL-BEHAVIORS>
@@ -1186,11 +1186,8 @@ export const useAutosarStore = create<AutosarStore>()(
                 <RUNNABLE-ENTITY>
                   <SHORT-NAME>${runnable.name}</SHORT-NAME>
                   <CAN-BE-INVOKED-CONCURRENTLY>${runnable.canBeInvokedConcurrently}</CAN-BE-INVOKED-CONCURRENTLY>
-                  ${runnable.runnableType === 'periodic' && runnable.period ? `
-                  <MINIMUM-START-INTERVAL>${runnable.period / 1000}</MINIMUM-START-INTERVAL>` : ''}
                   <DATA-READ-ACCESSS>
                     ${runnable.accessPoints.filter(ap => ap.type === 'iRead').map(ap => {
-                      const port = swc.ports.find(p => p.id === ap.portRef);
                       return `
                     <VARIABLE-ACCESS>
                       <SHORT-NAME>${ap.name}</SHORT-NAME>
@@ -1207,7 +1204,6 @@ export const useAutosarStore = create<AutosarStore>()(
                   </DATA-READ-ACCESSS>
                   <DATA-WRITE-ACCESSS>
                     ${runnable.accessPoints.filter(ap => ap.type === 'iWrite').map(ap => {
-                      const port = swc.ports.find(p => p.id === ap.portRef);
                       return `
                     <VARIABLE-ACCESS>
                       <SHORT-NAME>${ap.name}</SHORT-NAME>
