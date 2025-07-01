@@ -136,7 +136,7 @@ interface AutosarState {
   autoSaveInterval: number;
   lastAutoSave: number | null;
   
-  createProject: (name: string, description: string) => void;
+  createProject: (projectData: Omit<Project, 'id' | 'lastModified'>) => void;
   loadProject: (projectId: string) => void;
   saveProject: () => void;
   saveProjectAsDraft: () => void;
@@ -194,21 +194,11 @@ export const useAutosarStore = create<AutosarState>()(
       autoSaveInterval: 60000,
       lastAutoSave: null,
 
-      createProject: (name: string, description: string) => {
+      createProject: (projectData: Omit<Project, 'id' | 'lastModified'>) => {
         const newProject: Project = {
           id: uuidv4(),
-          name,
-          description,
-          swcs: [],
-          interfaces: [],
-          dataTypes: [],
-          connections: [],
-          dataElements: [],
-          ecuCompositions: [],
-          autosarVersion: '4.2.2',
-          isDraft: true,
           lastModified: Date.now(),
-          autoSaveEnabled: true,
+          ...projectData
         };
         set(state => ({ 
           projects: [...state.projects, newProject],
