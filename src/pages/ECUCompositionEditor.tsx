@@ -1,601 +1,630 @@
 
-import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  Plus, 
-  Trash2, 
-  Settings,
-  Box,
-  ArrowRight,
-  Save
-} from "lucide-react";
-import { useAutosarStore } from "@/store/autosarStore";
-import DeleteConfirmDialog from "@/components/DeleteConfirmDialog";
+import { useAutosarStore } from '@/store/autosarStore';
+import DeleteConfirmDialog from '@/components/DeleteConfirmDialog';
+import { Plus, Trash2, Download, Cable, ArrowLeft } from 'lucide-react';
 
 const ECUCompositionEditor = () => {
+  const { projectId } = useParams<{ projectId: string }>();
+  const navigate = useNavigate();
   const { toast } = useToast();
-  const { 
+  
+  const {
     currentProject,
+    swcs,
     createECUComposition,
     updateECUComposition,
     deleteECUComposition,
     addSWCInstance,
     removeSWCInstance,
-    addECUConnector,
-    removeECUConnector,
-    saveProject
+    createConnector,
+    deleteConnector,
+    exportArxml,
+    loadProject
   } = useAutosarStore();
-  
-  const [selectedComposition, setSelectedComposition] = useState<string>("");
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [isInstanceDialogOpen, setIsInstanceDialogOpen] = useState(false);
-  const [isConnectorDialogOpen, setIsConnectorDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<{id: string, name: string, type: 'composition' | 'instance' | 'connector'} | null>(null);
-  
-  // Form states
-  const [compositionName, setCompositionName] = useState("");
-  const [compositionDescription, setCompositionDescription] = useState("");
-  const [ecuType, setEcuType] = useState("ECU");
-  
-  // Instance form states
-  const [instanceName, setInstanceName] = useState("");
-  const [selectedSWC, setSelectedSWC] = useState("");
-  
-  // Connector form states
-  const [connectorName, setConnectorName] = useState("");
-  const [sourceInstance, setSourceInstance] = useState("");
-  const [sourcePort, setSourcePort] = useState("");
-  const [targetInstance, setTargetInstance] = useState("");
-  const [targetPort, setTargetPort] = useState("");
+
+  // State variables
+  const [isCreateCompositionDialogOpen, setIsCreateCompositionDialogOpen] = useState(false);
+  const [selectedComposition, setSelectedComposition] = useState<string | null>(null);
+  const [isAddInstanceDialogOpen, setIsAddInstanceDialogOpen] = useState(false);
+  const [selectedSwcForInstance, setSelectedSwcForInstance] = useState<string>('');
+  const [isCreateConnectorDialogOpen, setIsCreateConnectorDialogOpen] = useState(false);
+  const [sourceInstanceId, setSourceInstanceId] = useState<string>('');
+  const [targetInstanceId, setTargetInstanceId] = useState<string>('');
+  const [sourcePortId, setSourcePortId] = useState<string>('');
+  const [targetPortId, setTargetPortId] = useState<string>('');
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: string; id: string; name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Form state for new composition
+  const [newCompositionName, setNewCompositionName] = useState('');
+  const [newCompositionDescription, setNewCompositionDescription] = useState('');
+
+  // Get ECU compositions from current project
+  const ecuCompositions = currentProject?.ecuCompositions || [];
+
+  useEffect(() => {
+    if (projectId && !currentProject) {
+      loadProject(projectId);
+    }
+  }, [projectId, currentProject, loadProject]);
+
+  // Helper function to get port by ID
+  const getPortById = (portId: string) => {
+    for (const swc of swcs) {
+      const port = swc.ports.find(p => p.id === portId);
+      if (port) return port;
+    }
+    return null;
+  };
+
+  // Handle opening delete dialog
+  const openDeleteDialog = (type: string, id: string, name: string) => {
+    setDeleteTarget({ type, id, name });
+    setIsDeleteDialogOpen(true);
+  };
+
+  // Handle delete confirmation
+  const handleDelete = async () => {
+    if (!deleteTarget || !currentProject) return;
+
+    setIsDeleting(true);
+    try {
+      if (deleteTarget.type === 'composition') {
+        deleteECUComposition(currentProject.id, deleteTarget.id);
+        if (selectedComposition === deleteTarget.id) {
+          setSelectedComposition(null);
+        }
+        toast({
+          title: "Success",
+          description: "ECU Composition deleted successfully",
+        });
+      } else if (deleteTarget.type === 'instance') {
+        if (selectedComposition) {
+          removeSWCInstance(currentProject.id, selectedComposition, deleteTarget.id);
+          toast({
+            title: "Success",
+            description: "SWC Instance removed successfully",
+          });
+        }
+      } else if (deleteTarget.type === 'connector') {
+        if (selectedComposition) {
+          deleteConnector(currentProject.id, selectedComposition, deleteTarget.id);
+          toast({
+            title: "Success",
+            description: "Connector deleted successfully",
+          });
+        }
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete item",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+      setIsDeleteDialogOpen(false);
+      setDeleteTarget(null);
+    }
+  };
+
+  // Handle creating new composition
+  const handleCreateComposition = () => {
+    if (!currentProject || !newCompositionName.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a composition name",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      createECUComposition(currentProject.id, {
+        name: newCompositionName.trim(),
+        description: newCompositionDescription.trim(),
+      });
+      
+      setNewCompositionName('');
+      setNewCompositionDescription('');
+      setIsCreateCompositionDialogOpen(false);
+      
+      toast({
+        title: "Success",
+        description: "ECU Composition created successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to create ECU Composition",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Handle adding SWC instance
+  const handleAddInstance = () => {
+    if (!currentProject || !selectedComposition || !selectedSwcForInstance) {
+      toast({
+        title: "Error",
+        description: "Please select an SWC",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const selectedSWC = swcs.find(swc => swc.id === selectedSwcForInstance);
+    if (!selectedSWC) {
+      toast({
+        title: "Error",
+        description: "Selected SWC not found",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      addSWCInstance(currentProject.id, selectedComposition, {
+        name: `${selectedSWC.name}_Instance`,
+        swcId: selectedSwcForInstance,
+      });
+      
+      setSelectedSwcForInstance('');
+      setIsAddInstanceDialogOpen(false);
+      
+      toast({
+        title: "Success",
+        description: "SWC Instance added successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to add SWC Instance",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Handle creating connector
+  const handleCreateConnector = () => {
+    if (!currentProject || !selectedComposition || !sourceInstanceId || !targetInstanceId || !sourcePortId || !targetPortId) {
+      toast({
+        title: "Error",
+        description: "Please fill all connector fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      createConnector(currentProject.id, selectedComposition, {
+        name: `Connector_${Date.now()}`,
+        sourceInstanceId,
+        targetInstanceId,
+        sourcePortId,
+        targetPortId,
+      });
+      
+      setSourceInstanceId('');
+      setTargetInstanceId('');
+      setSourcePortId('');
+      setTargetPortId('');
+      setIsCreateConnectorDialogOpen(false);
+      
+      toast({
+        title: "Success",
+        description: "Connector created successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to create connector",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Handle export
+  const handleExport = () => {
+    if (!currentProject) return;
+    
+    try {
+      exportArxml(currentProject.id);
+      toast({
+        title: "Success",
+        description: "ARXML exported successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to export ARXML",
+        variant: "destructive",
+      });
+    }
+  };
 
   if (!currentProject) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">No project loaded. Please create or load a project first.</p>
+      <div className="container mx-auto p-6">
+        <div className="text-center">Loading project...</div>
       </div>
     );
   }
 
-  const currentComposition = currentProject.ecuCompositions.find(c => c.id === selectedComposition);
-  
-  const handleCreateComposition = () => {
-    if (!compositionName.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Composition name is required",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    createECUComposition({
-      name: compositionName,
-      description: compositionDescription,
-      ecuType,
-      autosarVersion: currentProject.autosarVersion,
-    });
-
-    toast({
-      title: "ECU Composition Created",
-      description: `${compositionName} has been created successfully`,
-    });
-
-    // Reset form
-    setCompositionName("");
-    setCompositionDescription("");
-    setEcuType("ECU");
-    setIsCreateDialogOpen(false);
-  };
-
-  const handleAddInstance = () => {
-    if (!instanceName.trim() || !selectedSWC || !selectedComposition) {
-      toast({
-        title: "Validation Error",
-        description: "Instance name and SWC selection are required",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    addSWCInstance(selectedComposition, {
-      name: instanceName,
-      swcRef: selectedSWC,
-      instanceName: instanceName,
-      ecuCompositionId: selectedComposition,
-    });
-
-    toast({
-      title: "SWC Instance Added",
-      description: `${instanceName} instance has been added`,
-    });
-
-    // Reset form
-    setInstanceName("");
-    setSelectedSWC("");
-    setIsInstanceDialogOpen(false);
-  };
-
-  const handleAddConnector = () => {
-    if (!connectorName.trim() || !sourceInstance || !sourcePort || !targetInstance || !targetPort || !selectedComposition) {
-      toast({
-        title: "Validation Error",
-        description: "All connector fields are required",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    addECUConnector(selectedComposition, {
-      name: connectorName,
-      sourceInstanceId: sourceInstance,
-      sourcePortId: sourcePort,
-      targetInstanceId: targetInstance,
-      targetPortId: targetPort,
-      ecuCompositionId: selectedComposition,
-    });
-
-    toast({
-      title: "Connector Added",
-      description: `${connectorName} connector has been added`,
-    });
-
-    // Reset form
-    setConnectorName("");
-    setSourceInstance("");
-    setSourcePort("");
-    setTargetInstance("");
-    setTargetPort("");
-    setIsConnectorDialogOpen(false);
-  };
-
-  const handleDelete = () => {
-    if (!itemToDelete) return;
-    
-    try {
-      switch (itemToDelete.type) {
-        case 'composition':
-          deleteECUComposition(itemToDelete.id);
-          if (selectedComposition === itemToDelete.id) {
-            setSelectedComposition("");
-          }
-          break;
-        case 'instance':
-          if (selectedComposition) {
-            removeSWCInstance(selectedComposition, itemToDelete.id);
-          }
-          break;
-        case 'connector':
-          if (selectedComposition) {
-            removeECUConnector(selectedComposition, itemToDelete.id);
-          }
-          break;
-      }
-      
-      toast({
-        title: "Item Deleted",
-        description: `${itemToDelete.name} has been deleted successfully`,
-      });
-    } catch (error) {
-      toast({
-        title: "Delete Failed",
-        description: "Failed to delete item",
-        variant: "destructive",
-      });
-    }
-    
-    setDeleteDialogOpen(false);
-    setItemToDelete(null);
-  };
-
-  const handleSaveProject = () => {
-    saveProject();
-    toast({
-      title: "Project Saved",
-      description: "All changes have been saved successfully",
-    });
-  };
-
-  const getAvailablePorts = (instanceId: string, direction?: 'provided' | 'required') => {
-    const instance = currentComposition?.swcInstances.find(i => i.id === instanceId);
-    if (!instance) return [];
-    
-    const swc = currentProject.swcs.find(s => s.id === instance.swcRef);
-    if (!swc) return [];
-    
-    return swc.ports.filter(port => !direction || port.direction === direction);
-  };
+  const selectedCompositionData = ecuCompositions.find(comp => comp.id === selectedComposition);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">ECU Composition Editor</h1>
-          <p className="text-muted-foreground mt-1">
-            Design ECU compositions and manage SWC instances
-          </p>
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate(`/projects/${projectId}`)}
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Project
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold">ECU Composition Editor</h1>
+            <p className="text-muted-foreground">
+              Project: {currentProject.name}
+            </p>
+          </div>
         </div>
         <div className="flex gap-2">
-          <Button 
-            onClick={handleSaveProject}
-            className="autosar-button"
-          >
-            <Save className="h-4 w-4 mr-2" />
-            Save Project
+          <Button onClick={handleExport} variant="outline">
+            <Download className="h-4 w-4 mr-2" />
+            Export ARXML
           </Button>
-          <Dialog open={isCreateCompositionDialogOpen} onOpenChange={setIsCreateCompositionDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="autosar-button flex items-center gap-2">
-                <Plus className="h-4 w-4" />
-                New ECU Composition
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>Create New ECU Composition</DialogTitle>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="name">Name *</Label>
-                  <Input 
-                    id="name" 
-                    placeholder="Enter composition name" 
-                    value={compositionName}
-                    onChange={(e) => setCompositionName(e.target.value)}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Input 
-                    id="description" 
-                    placeholder="Brief description" 
-                    value={compositionDescription}
-                    onChange={(e) => setCompositionDescription(e.target.value)}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="ecu-type">ECU Type</Label>
-                  <Input 
-                    id="ecu-type" 
-                    placeholder="ECU type (e.g., Engine Control Unit)" 
-                    value={ecuType}
-                    onChange={(e) => setEcuType(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setIsCreateCompositionDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button className="autosar-button" onClick={handleCreateComposition}>
-                  Create Composition
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
         </div>
       </div>
 
-      {/* Composition Selection */}
-      {ecuCompositions.length > 0 && (
-        <Card className="autosar-card">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <Label htmlFor="composition-select">Active Composition:</Label>
-              <Select value={selectedCompositionId || ""} onValueChange={setSelectedCompositionId}>
-                <SelectTrigger className="w-64">
-                  <SelectValue placeholder="Select a composition" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ecuCompositions.map((comp) => (
-                    <SelectItem key={comp.id} value={comp.id}>{comp.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {selectedComposition && (
-                <Button 
-                  variant="destructive" 
-                  size="sm"
-                  onClick={() => openDeleteDialog(selectedComposition.id, selectedComposition.name, 'composition')}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete Composition
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {selectedComposition ? (
-        <>
-          {/* SWC Instances Section */}
-          <Card className="autosar-card">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Box className="h-5 w-5" />
-                    SWC Instances
-                  </CardTitle>
-                  <CardDescription>
-                    Add SWC instances to this ECU composition
-                  </CardDescription>
-                </div>
-                <Dialog open={isAddInstanceDialogOpen} onOpenChange={setIsAddInstanceDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline">
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Instance
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-[425px]">
-                    <DialogHeader>
-                      <DialogTitle>Add SWC Instance</DialogTitle>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                      <div className="grid gap-2">
-                        <Label htmlFor="swc-select">Select SWC *</Label>
-                        <Select onValueChange={setSelectedSwcForInstance}>
-                          <SelectTrigger id="swc-select">
-                            <SelectValue placeholder="Select a SWC" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {currentProject?.swcs.map((swc) => (
-                              <SelectItem key={swc.id} value={swc.id}>{swc.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label htmlFor="instance-name">Instance Name *</Label>
-                        <Input 
-                          id="instance-name" 
-                          placeholder="Enter instance name" 
-                          value={instanceName}
-                          onChange={(e) => setInstanceName(e.target.value)}
-                        />
-                      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* ECU Compositions List */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              ECU Compositions
+              <Dialog open={isCreateCompositionDialogOpen} onOpenChange={setIsCreateCompositionDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm">
+                    <Plus className="h-4 w-4 mr-2" />
+                    New
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create ECU Composition</DialogTitle>
+                    <DialogDescription>
+                      Create a new ECU composition for your project.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="compositionName">Name</Label>
+                      <Input
+                        id="compositionName"
+                        value={newCompositionName}
+                        onChange={(e) => setNewCompositionName(e.target.value)}
+                        placeholder="Enter composition name"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="compositionDescription">Description</Label>
+                      <Textarea
+                        id="compositionDescription"
+                        value={newCompositionDescription}
+                        onChange={(e) => setNewCompositionDescription(e.target.value)}
+                        placeholder="Enter composition description"
+                      />
                     </div>
                     <div className="flex justify-end gap-2">
-                      <Button variant="outline" onClick={() => setIsAddInstanceDialogOpen(false)}>
+                      <Button
+                        variant="outline"
+                        onClick={() => setIsCreateCompositionDialogOpen(false)}
+                      >
                         Cancel
                       </Button>
-                      <Button className="autosar-button" onClick={handleAddInstance}>
-                        Add Instance
+                      <Button onClick={handleCreateComposition}>
+                        Create
                       </Button>
                     </div>
-                  </DialogContent>
-                </Dialog>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {ecuCompositions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No compositions yet</p>
+            ) : (
+              <div className="space-y-2">
+                {ecuCompositions.map((composition) => (
+                  <div
+                    key={composition.id}
+                    className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                      selectedComposition === composition.id
+                        ? 'bg-primary/10 border-primary'
+                        : 'hover:bg-muted'
+                    }`}
+                    onClick={() => setSelectedComposition(composition.id)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-medium">{composition.name}</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {composition.description}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openDeleteDialog('composition', composition.id, composition.name);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </CardHeader>
-            <CardContent>
-              {selectedComposition.swcInstances.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No SWC instances added yet
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {selectedComposition.swcInstances.map((instance) => {
-                    const swc = currentProject?.swcs.find(s => s.id === instance.swcRef);
-                    return (
-                      <Card key={instance.id} className="p-4">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <h4 className="font-medium">{instance.instanceName}</h4>
-                            <p className="text-sm text-muted-foreground">
-                              Type: {swc?.name || 'Unknown'}
-                            </p>
-                            <Badge variant="outline" className="mt-2 capitalize">
-                              {swc?.category || 'Unknown'}
-                            </Badge>
-                          </div>
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => openDeleteDialog(instance.id, instance.instanceName, 'instance')}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </Card>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Connectors Section */}
-          <Card className="autosar-card">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Cable className="h-5 w-5" />
-                    Connectors
-                  </CardTitle>
-                  <CardDescription>
-                    Define connections between SWC instance ports
-                  </CardDescription>
-                </div>
-                <Dialog open={isCreateConnectorDialogOpen} onOpenChange={setIsCreateConnectorDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline">
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Connector
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-[500px]">
-                    <DialogHeader>
-                      <DialogTitle>Create Connector</DialogTitle>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                      <div className="grid gap-2">
-                        <Label htmlFor="connector-name">Connector Name *</Label>
-                        <Input 
-                          id="connector-name" 
-                          placeholder="Enter connector name" 
-                          value={connectorName}
-                          onChange={(e) => setConnectorName(e.target.value)}
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="grid gap-2">
-                          <Label htmlFor="source-instance">Source Instance *</Label>
-                          <Select onValueChange={setSourceInstanceId}>
-                            <SelectTrigger id="source-instance">
-                              <SelectValue placeholder="Select source" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {selectedComposition.swcInstances.map((instance) => (
-                                <SelectItem key={instance.id} value={instance.id}>
-                                  {instance.instanceName}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="grid gap-2">
-                          <Label htmlFor="target-instance">Target Instance *</Label>
-                          <Select onValueChange={setTargetInstanceId}>
-                            <SelectTrigger id="target-instance">
-                              <SelectValue placeholder="Select target" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {selectedComposition.swcInstances.map((instance) => (
-                                <SelectItem key={instance.id} value={instance.id}>
-                                  {instance.instanceName}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="grid gap-2">
-                          <Label htmlFor="source-port">Source Port *</Label>
-                          <Select onValueChange={setSourcePortId}>
-                            <SelectTrigger id="source-port">
-                              <SelectValue placeholder="Select port" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {getAvailablePorts(sourceInstanceId, 'provided').map((port) => (
-                                <SelectItem key={port.id} value={port.id}>
-                                  {port.name} (Provided)
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="grid gap-2">
-                          <Label htmlFor="target-port">Target Port *</Label>
-                          <Select onValueChange={setTargetPortId}>
-                            <SelectTrigger id="target-port">
-                              <SelectValue placeholder="Select port" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {getAvailablePorts(targetInstanceId, 'required').map((port) => (
-                                <SelectItem key={port.id} value={port.id}>
-                                  {port.name} (Required)
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" onClick={() => setIsCreateConnectorDialogOpen(false)}>
-                        Cancel
-                      </Button>
-                      <Button className="autosar-button" onClick={handleCreateConnector}>
-                        Create Connector
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {selectedComposition.connectors.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No connectors defined yet
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {selectedComposition.connectors.map((connector) => {
-                    const sourceInstance = selectedComposition.swcInstances.find(i => i.id === connector.sourceInstanceId);
-                    const targetInstance = selectedComposition.swcInstances.find(i => i.id === connector.targetInstanceId);
-                    const sourcePort = getPortById(connector.sourcePortId);
-                    const targetPort = getPortById(connector.targetPortId);
-                    
-                    return (
-                      <Card key={connector.id} className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-4">
-                            <div className="text-sm">
-                              <span className="font-medium">{connector.name}</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <span>{sourceInstance?.instanceName}.{sourcePort?.name}</span>
-                              <ArrowRight className="h-3 w-3" />
-                              <span>{targetInstance?.instanceName}.{targetPort?.name}</span>
-                            </div>
-                          </div>
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => openDeleteDialog(connector.id, connector.name, 'connector')}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </Card>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </>
-      ) : (
-        <Card className="autosar-card">
-          <CardContent className="text-center py-12">
-            <Box className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p className="text-muted-foreground mb-4">
-              {ecuCompositions.length === 0 
-                ? "No ECU compositions created yet"
-                : "Select an ECU composition to start editing"
-              }
-            </p>
-            {ecuCompositions.length === 0 && (
-              <Button 
-                onClick={() => setIsCreateCompositionDialogOpen(true)}
-                className="autosar-button"
-              >
-                Create Your First ECU Composition
-              </Button>
             )}
           </CardContent>
         </Card>
-      )}
 
+        {/* SWC Instances */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              SWC Instances
+              <Dialog open={isAddInstanceDialogOpen} onOpenChange={setIsAddInstanceDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" disabled={!selectedComposition}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Instance
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add SWC Instance</DialogTitle>
+                    <DialogDescription>
+                      Add an SWC instance to the selected composition.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="swcSelect">Select SWC</Label>
+                      <Select value={selectedSwcForInstance} onValueChange={setSelectedSwcForInstance}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select an SWC" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {swcs.map((swc) => (
+                            <SelectItem key={swc.id} value={swc.id}>
+                              {swc.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setIsAddInstanceDialogOpen(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button onClick={handleAddInstance}>
+                        Add Instance
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!selectedComposition ? (
+              <p className="text-sm text-muted-foreground">Select a composition first</p>
+            ) : !selectedCompositionData?.swcInstances?.length ? (
+              <p className="text-sm text-muted-foreground">No instances yet</p>
+            ) : (
+              <div className="space-y-2">
+                {selectedCompositionData.swcInstances.map((instance) => (
+                  <div key={instance.id} className="p-3 rounded-lg border">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-medium">{instance.name}</h4>
+                        <Badge variant="secondary" className="text-xs">
+                          {swcs.find(swc => swc.id === instance.swcId)?.name || 'Unknown SWC'}
+                        </Badge>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => openDeleteDialog('instance', instance.id, instance.name)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Connectors */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Cable className="h-5 w-5" />
+                Connectors
+              </div>
+              <Dialog open={isCreateConnectorDialogOpen} onOpenChange={setIsCreateConnectorDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" disabled={!selectedComposition || !selectedCompositionData?.swcInstances?.length}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create Connector</DialogTitle>
+                    <DialogDescription>
+                      Create a connection between two SWC instances.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label>Source Instance</Label>
+                      <Select value={sourceInstanceId} onValueChange={setSourceInstanceId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select source instance" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {selectedCompositionData?.swcInstances?.map((instance) => (
+                            <SelectItem key={instance.id} value={instance.id}>
+                              {instance.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Target Instance</Label>
+                      <Select value={targetInstanceId} onValueChange={setTargetInstanceId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select target instance" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {selectedCompositionData?.swcInstances?.map((instance) => (
+                            <SelectItem key={instance.id} value={instance.id}>
+                              {instance.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Source Port</Label>
+                      <Select value={sourcePortId} onValueChange={setSourcePortId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select source port" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {sourceInstanceId && (() => {
+                            const instance = selectedCompositionData?.swcInstances?.find(i => i.id === sourceInstanceId);
+                            const swc = instance ? swcs.find(s => s.id === instance.swcId) : null;
+                            return swc?.ports.map((port) => (
+                              <SelectItem key={port.id} value={port.id}>
+                                {port.name} ({port.direction})
+                              </SelectItem>
+                            ));
+                          })()}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Target Port</Label>
+                      <Select value={targetPortId} onValueChange={setTargetPortId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select target port" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {targetInstanceId && (() => {
+                            const instance = selectedCompositionData?.swcInstances?.find(i => i.id === targetInstanceId);
+                            const swc = instance ? swcs.find(s => s.id === instance.swcId) : null;
+                            return swc?.ports.map((port) => (
+                              <SelectItem key={port.id} value={port.id}>
+                                {port.name} ({port.direction})
+                              </SelectItem>
+                            ));
+                          })()}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setIsCreateConnectorDialogOpen(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button onClick={handleCreateConnector}>
+                        Create Connector
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!selectedComposition ? (
+              <p className="text-sm text-muted-foreground">Select a composition first</p>
+            ) : !selectedCompositionData?.connectors?.length ? (
+              <p className="text-sm text-muted-foreground">No connectors yet</p>
+            ) : (
+              <div className="space-y-2">
+                {selectedCompositionData.connectors.map((connector) => {
+                  const sourceInstance = selectedCompositionData.swcInstances?.find(i => i.id === connector.sourceInstanceId);
+                  const targetInstance = selectedCompositionData.swcInstances?.find(i => i.id === connector.targetInstanceId);
+                  const sourcePort = getPortById(connector.sourcePortId);
+                  const targetPort = getPortById(connector.targetPortId);
+                  
+                  return (
+                    <div key={connector.id} className="p-3 rounded-lg border">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="font-medium">{connector.name}</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {sourceInstance?.name}.{sourcePort?.name} → {targetInstance?.name}.{targetPort?.name}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => openDeleteDialog('connector', connector.id, connector.name)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Delete Confirmation Dialog */}
       <DeleteConfirmDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        title={`Delete ${itemToDelete?.type === 'composition' ? 'ECU Composition' : 
-               itemToDelete?.type === 'instance' ? 'SWC Instance' : 'Connector'}`}
-        description={`Are you sure you want to delete this ${itemToDelete?.type}? This action cannot be undone.`}
-        itemName={itemToDelete?.name || "Unknown Item"}
-        onConfirm={handleDeleteItem}
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+        title={`Delete ${deleteTarget?.type === 'composition' ? 'ECU Composition' : 
+               deleteTarget?.type === 'instance' ? 'SWC Instance' : 'Connector'}`}
+        description={`Are you sure you want to delete this ${deleteTarget?.type}? This action cannot be undone.`}
+        itemName={deleteTarget?.name || ''}
+        onConfirm={handleDelete}
         isLoading={isDeleting}
       />
     </div>
