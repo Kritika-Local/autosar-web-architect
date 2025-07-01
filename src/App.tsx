@@ -11,6 +11,7 @@ import PortEditor from '@/pages/PortEditor';
 import DataTypeEditor from '@/pages/DataTypeEditor';
 import DataElementEditor from '@/pages/DataElementEditor';
 import BehaviorDesigner from '@/pages/BehaviorDesigner';
+import ECUCompositionEditor from '@/pages/ECUCompositionEditor';
 import NotFound from '@/pages/NotFound';
 import './App.css';
 
@@ -29,6 +30,7 @@ function App() {
           <Route path="/data-types" element={<AppLayout><DataTypeEditor /></AppLayout>} />
           <Route path="/data-element-editor" element={<AppLayout><DataElementEditor /></AppLayout>} />
           <Route path="/behavior-designer" element={<AppLayout><BehaviorDesigner /></AppLayout>} />
+          <Route path="/ecu-composition" element={<AppLayout><ECUCompositionEditor /></AppLayout>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Router>
