@@ -75,7 +75,6 @@ const SWCBuilder = () => {
       description: swcDescription,
       category: swcCategory,
       type: swcType,
-      autosarVersion,
     });
 
     toast({

@@ -1020,6 +1020,242 @@ export const useAutosarStore = create<AutosarStore>()(
       generateAccessPointName: (swcName: string, runnableName: string, accessType: 'iRead' | 'iWrite' | 'iCall') => {
         return `${accessType}_${swcName}_${runnableName}`;
       },
+      
+      // ARXML export functions
+      exportArxml: () => {
+        const project = get().currentProject;
+        if (!project) return;
+        
+        const arxmlContent = get().generateConsolidatedArxml(project);
+        const blob = new Blob([arxmlContent], { type: 'application/xml' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${project.name.replace(/\s+/g, '_')}.arxml`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      },
+      
+      exportMultipleArxml: () => {
+        const project = get().currentProject;
+        if (!project) return;
+        
+        const files = [
+          { name: 'swc.arxml', content: get().generateSWCArxml(project.swcs[0], project) },
+          { name: 'datatypes.arxml', content: get().generateDataTypesArxml(project) },
+          { name: 'portinterfaces.arxml', content: get().generatePortInterfacesArxml(project) },
+          { name: 'systemextract.arxml', content: get().generateSystemExtractArxml(project) }
+        ];
+        
+        get().downloadArxmlFiles(files);
+      },
+      
+      downloadArxmlFiles: (files: { name: string; content: string }[]) => {
+        files.forEach(file => {
+          const blob = new Blob([file.content], { type: 'application/xml' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = file.name;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        });
+      },
+      
+      generateConsolidatedArxml: (project: Project) => {
+        return `<?xml version="1.0" encoding="utf-8"?>
+<!--This file was saved with a tool from Vector Informatik GmbH-->
+<AUTOSAR xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_00048.xsd"
+         xmlns="http://autosar.org/schema/r4.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>${project.name}</SHORT-NAME>
+      <ELEMENTS>
+        ${project.swcs.map(swc => `
+        <APPLICATION-SW-COMPONENT-TYPE>
+          <SHORT-NAME>${swc.name}</SHORT-NAME>
+          <CATEGORY>${swc.category.toUpperCase()}</CATEGORY>
+        </APPLICATION-SW-COMPONENT-TYPE>`).join('')}
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+      },
+      
+      generateSWCArxml: (swc: SWC, project: Project) => {
+        return `<?xml version="1.0" encoding="utf-8"?>
+<!--This file was saved with a tool from Vector Informatik GmbH-->
+<AUTOSAR xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_00048.xsd"
+         xmlns="http://autosar.org/schema/r4.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>SoftwareComponents</SHORT-NAME>
+      <ELEMENTS>
+        <APPLICATION-SW-COMPONENT-TYPE>
+          <SHORT-NAME>${swc.name}</SHORT-NAME>
+          <CATEGORY>${swc.category.toUpperCase()}</CATEGORY>
+        </APPLICATION-SW-COMPONENT-TYPE>
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+      },
+      
+      generateDataTypesArxml: (project: Project) => {
+        return `<?xml version="1.0" encoding="utf-8"?>
+<!--This file was saved with a tool from Vector Informatik GmbH-->
+<AUTOSAR xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_00048.xsd"
+         xmlns="http://autosar.org/schema/r4.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>DataTypes</SHORT-NAME>
+      <ELEMENTS>
+        ${project.dataTypes.map(dt => `
+        <IMPLEMENTATION-DATA-TYPE>
+          <SHORT-NAME>${dt.name}</SHORT-NAME>
+          <CATEGORY>${dt.category.toUpperCase()}</CATEGORY>
+        </IMPLEMENTATION-DATA-TYPE>`).join('')}
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+      },
+      
+      generatePortInterfacesArxml: (project: Project) => {
+        return `<?xml version="1.0" encoding="utf-8"?>
+<!--This file was saved with a tool from Vector Informatik GmbH-->
+<AUTOSAR xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_00048.xsd"
+         xmlns="http://autosar.org/schema/r4.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>PortInterfaces</SHORT-NAME>
+      <ELEMENTS>
+        ${project.interfaces.map(iface => `
+        <SENDER-RECEIVER-INTERFACE>
+          <SHORT-NAME>${iface.name}</SHORT-NAME>
+        </SENDER-RECEIVER-INTERFACE>`).join('')}
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+      },
+      
+      generateTopologyArxml: (project: Project) => {
+        return `<?xml version="1.0" encoding="utf-8"?>
+<!--This file was saved with a tool from Vector Informatik GmbH-->
+<AUTOSAR xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_00048.xsd"
+         xmlns="http://autosar.org/schema/r4.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>Topology</SHORT-NAME>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+      },
+      
+      generateConstantsArxml: (project: Project) => {
+        return `<?xml version="1.0" encoding="utf-8"?>
+<!--This file was saved with a tool from Vector Informatik GmbH-->
+<AUTOSAR xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_00048.xsd"
+         xmlns="http://autosar.org/schema/r4.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>Constants</SHORT-NAME>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+      },
+      
+      generatePackagesArxml: (project: Project) => {
+        return `<?xml version="1.0" encoding="utf-8"?>
+<!--This file was saved with a tool from Vector Informatik GmbH-->
+<AUTOSAR xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_00048.xsd"
+         xmlns="http://autosar.org/schema/r4.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>Packages</SHORT-NAME>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+      },
+      
+      generateConnectionsArxml: (project: Project) => {
+        return `<?xml version="1.0" encoding="utf-8"?>
+<!--This file was saved with a tool from Vector Informatik GmbH-->
+<AUTOSAR xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_00048.xsd"
+         xmlns="http://autosar.org/schema/r4.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>Connections</SHORT-NAME>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+      },
+      
+      generateSystemExtractArxml: (project: Project) => {
+        return `<?xml version="1.0" encoding="utf-8"?>
+<!--This file was saved with a tool from Vector Informatik GmbH-->
+<AUTOSAR xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_00048.xsd"
+         xmlns="http://autosar.org/schema/r4.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ADMIN-DATA>
+    <SDGS>
+      <SDG GID="ExportInfo">
+        <SD GID="ExportedWithXDISVersion">21.3.4</SD>
+        <SD GID="ExportedBy">autosar.workspace@example.com</SD>
+        <SD GID="ExportedDate">${new Date().toISOString()}</SD>
+      </SDG>
+    </SDGS>
+  </ADMIN-DATA>
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>SystemExtract</SHORT-NAME>
+      <ELEMENTS>
+        <SYSTEM>
+          <SHORT-NAME>${project.name}_System</SHORT-NAME>
+        </SYSTEM>
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+      },
+      
+      generateECUCompositionArxml: (composition: ECUComposition, project: Project) => {
+        return `<?xml version="1.0" encoding="utf-8"?>
+<!--This file was saved with a tool from Vector Informatik GmbH-->
+<AUTOSAR xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_00048.xsd"
+         xmlns="http://autosar.org/schema/r4.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>ECUCompositions</SHORT-NAME>
+      <ELEMENTS>
+        <ECU-INSTANCE>
+          <SHORT-NAME>${composition.name}</SHORT-NAME>
+          <COMM-CONTROLLERS>
+            ${composition.swcInstances.map(instance => `
+            <CAN-COMMUNICATION-CONTROLLER>
+              <SHORT-NAME>${instance.instanceName}</SHORT-NAME>
+            </CAN-COMMUNICATION-CONTROLLER>`).join('')}
+          </COMM-CONTROLLERS>
+        </ECU-INSTANCE>
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+      },
     }),
     {
       name: 'autosar-storage',
