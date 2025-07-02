@@ -49,19 +49,19 @@ export class AutosarGenerator {
   }
 
   private static processRequirement(req: RequirementDocument, artifacts: AutosarArtifacts) {
-    // Create SWCs
+    // Create SWCs first
     this.createSwcs(req, artifacts);
     
     // Create Interfaces
     this.createInterfaces(req, artifacts);
     
+    // Create Runnables (mapped to SWCs)
+    this.createRunnables(req, artifacts);
+    
     // Create Ports
     this.createPorts(req, artifacts);
     
-    // Create Runnables
-    this.createRunnables(req, artifacts);
-    
-    // Create Access Points
+    // Create Access Points (mapped to Runnables)
     this.createAccessPoints(req, artifacts);
   }
 
@@ -72,13 +72,72 @@ export class AutosarGenerator {
                          swcName.endsWith('Controller') ? swcName : swcName + 'Controller';
       
       if (!artifacts.swcs.find(s => s.name === fullSwcName)) {
+        // Create SWC with empty runnables and ports arrays that will be populated later
         artifacts.swcs.push({
           name: fullSwcName,
           description: `Software component for ${swcName.replace('Controller', '').replace('_swc', '').toLowerCase()} functionality (Generated from ${req.id})`,
           category: this.inferSwcCategory(req.description),
-          type: 'atomic'
+          type: 'atomic',
+          runnables: [], // Initialize empty - will be populated by createRunnables
+          ports: [] // Initialize empty - will be populated by createPorts
         });
         console.log(`Created SWC: ${fullSwcName}`);
+      }
+    }
+  }
+
+  private static createRunnables(req: RequirementDocument, artifacts: AutosarArtifacts) {
+    const swcs = req.derivedElements.swcs.map(name => 
+      name.endsWith('_swc') ? name : name.endsWith('Controller') ? name : name + 'Controller'
+    );
+    
+    for (const swcName of swcs) {
+      const baseName = swcName.replace('_swc', '').replace('Controller', '');
+      
+      // Create Init runnable
+      const initRunnableName = `${swcName}_init`;
+      if (!artifacts.runnables.find(r => r.name === initRunnableName && r.swcName === swcName)) {
+        const initRunnable = {
+          name: initRunnableName,
+          period: 0,
+          runnableType: 'init' as const,
+          canBeInvokedConcurrently: false,
+          swcName: swcName,
+          accessPoints: [] // Initialize empty - will be populated by createAccessPoints
+        };
+        artifacts.runnables.push(initRunnable);
+        console.log(`Created Init Runnable: ${initRunnableName} for SWC: ${swcName}`);
+      }
+
+      // Create main runnable based on timing
+      let mainRunnableName: string;
+      let period = 100; // default 100ms
+      let runnableType: 'periodic' | 'event' | 'init' = 'periodic';
+
+      if (req.timing?.type === 'periodic' && req.timing.period) {
+        period = req.timing.unit === 's' ? req.timing.period * 1000 : req.timing.period;
+        mainRunnableName = `${swcName}_${req.timing.period}${req.timing.unit || 'ms'}`;
+        runnableType = 'periodic';
+      } else if (req.timing?.type === 'event') {
+        mainRunnableName = `${swcName}_Event`;
+        runnableType = 'event';
+        period = 0;
+      } else {
+        mainRunnableName = `${swcName}_main`;
+        runnableType = 'periodic';
+      }
+
+      if (!artifacts.runnables.find(r => r.name === mainRunnableName && r.swcName === swcName)) {
+        const mainRunnable = {
+          name: mainRunnableName,
+          period: period,
+          runnableType: runnableType,
+          canBeInvokedConcurrently: false,
+          swcName: swcName,
+          accessPoints: [] // Initialize empty - will be populated by createAccessPoints
+        };
+        artifacts.runnables.push(mainRunnable);
+        console.log(`Created Main Runnable: ${mainRunnableName} (${runnableType}, ${period}ms) for SWC: ${swcName}`);
       }
     }
   }
@@ -226,71 +285,19 @@ export class AutosarGenerator {
     }
   }
 
-  private static createRunnables(req: RequirementDocument, artifacts: AutosarArtifacts) {
-    const swcs = req.derivedElements.swcs.map(name => 
-      name.endsWith('_swc') ? name : name.endsWith('Controller') ? name : name + 'Controller'
-    );
-    
-    for (const swcName of swcs) {
-      const baseName = swcName.replace('_swc', '').replace('Controller', '');
-      
-      // Create Init runnable
-      const initRunnableName = `${swcName}_init`;
-      if (!artifacts.runnables.find(r => r.name === initRunnableName && r.swcName === swcName)) {
-        artifacts.runnables.push({
-          name: initRunnableName,
-          period: 0,
-          runnableType: 'init',
-          canBeInvokedConcurrently: false,
-          swcName: swcName
-        });
-        console.log(`Created Init Runnable: ${initRunnableName}`);
-      }
-
-      // Create main runnable based on timing
-      let mainRunnableName: string;
-      let period = 100; // default 100ms
-      let runnableType: 'periodic' | 'event' | 'init' = 'periodic';
-
-      if (req.timing?.type === 'periodic' && req.timing.period) {
-        period = req.timing.unit === 's' ? req.timing.period * 1000 : req.timing.period;
-        mainRunnableName = `${swcName}_${req.timing.period}${req.timing.unit || 'ms'}`;
-        runnableType = 'periodic';
-      } else if (req.timing?.type === 'event') {
-        mainRunnableName = `${swcName}_Event`;
-        runnableType = 'event';
-        period = 0;
-      } else {
-        mainRunnableName = `${swcName}_main`;
-        runnableType = 'periodic';
-      }
-
-      if (!artifacts.runnables.find(r => r.name === mainRunnableName && r.swcName === swcName)) {
-        artifacts.runnables.push({
-          name: mainRunnableName,
-          period: period,
-          runnableType: runnableType,
-          canBeInvokedConcurrently: false,
-          swcName: swcName
-        });
-        console.log(`Created Main Runnable: ${mainRunnableName} (${runnableType}, ${period}ms)`);
-      }
-    }
-  }
-
   private static createAccessPoints(req: RequirementDocument, artifacts: AutosarArtifacts) {
     const swcs = req.derivedElements.swcs.map(name => 
       name.endsWith('_swc') ? name : name.endsWith('Controller') ? name : name + 'Controller'
     );
     
+    // Only create access points for main runnables (not init)
+    const mainRunnables = artifacts.runnables.filter(r => r.runnableType !== 'init');
+    
     for (const swcName of swcs) {
       const swcPorts = artifacts.ports.filter(p => p.swcName === swcName);
-      const swcRunnables = artifacts.runnables.filter(r => r.swcName === swcName);
+      const swcMainRunnables = mainRunnables.filter(r => r.swcName === swcName);
       
-      // Create access points for main runnables (not init)
-      const mainRunnables = swcRunnables.filter(r => r.runnableType !== 'init');
-      
-      for (const runnable of mainRunnables) {
+      for (const runnable of swcMainRunnables) {
         for (const port of swcPorts) {
           const interface_ = artifacts.interfaces.find(i => i.name === port.interfaceRef);
           if (!interface_) continue;
@@ -326,7 +333,7 @@ export class AutosarGenerator {
               runnableName: runnable.name,
               swcName: swcName
             });
-            console.log(`Created Access Point: ${accessName} for ${runnable.name} (${accessType})`);
+            console.log(`Created Access Point: ${accessName} for ${runnable.name} (${accessType}) in SWC: ${swcName}`);
           }
         }
       }
@@ -369,5 +376,86 @@ export class AutosarGenerator {
     if (desc.includes('service') || desc.includes('diagnostic')) return 'service';
     if (desc.includes('abstraction') || desc.includes('layer')) return 'ecu-abstraction';
     return 'application';
+  }
+
+  // New method to integrate artifacts into the store
+  static integrateArtifactsIntoStore(artifacts: AutosarArtifacts, store: any) {
+    console.log('Integrating artifacts into store...');
+    
+    // Create SWCs with their runnables and ports properly nested
+    for (const swcData of artifacts.swcs) {
+      // Get runnables for this SWC
+      const swcRunnables = artifacts.runnables.filter(r => r.swcName === swcData.name);
+      // Get ports for this SWC
+      const swcPorts = artifacts.ports.filter(p => p.swcName === swcData.name);
+      
+      // Create the SWC
+      const swcId = store.createSWC({
+        name: swcData.name,
+        description: swcData.description,
+        category: swcData.category,
+        type: swcData.type
+      });
+      
+      console.log(`Created SWC: ${swcData.name} with ID: ${swcId}`);
+      
+      // Create runnables for this SWC
+      for (const runnableData of swcRunnables) {
+        const runnableId = store.createRunnable({
+          name: runnableData.name,
+          swcId: swcId,
+          runnableType: runnableData.runnableType,
+          period: runnableData.period,
+          canBeInvokedConcurrently: runnableData.canBeInvokedConcurrently || false,
+          events: []
+        });
+        
+        console.log(`Created Runnable: ${runnableData.name} with ID: ${runnableId} for SWC: ${swcData.name}`);
+        
+        // Create access points for this runnable
+        const runnableAccessPoints = artifacts.accessPoints.filter(ap => 
+          ap.runnableName === runnableData.name && ap.swcName === swcData.name
+        );
+        
+        for (const apData of runnableAccessPoints) {
+          store.addAccessPoint(runnableId, {
+            name: apData.name,
+            type: apData.type,
+            access: apData.access,
+            swcId: swcId,
+            runnableId: runnableId,
+            portRef: apData.portRef,
+            dataElementRef: apData.dataElementRef
+          });
+          
+          console.log(`Created Access Point: ${apData.name} for Runnable: ${runnableData.name}`);
+        }
+      }
+      
+      // Create ports for this SWC
+      for (const portData of swcPorts) {
+        store.createPort({
+          name: portData.name,
+          direction: portData.direction,
+          interfaceRef: portData.interfaceRef,
+          swcId: swcId
+        });
+        
+        console.log(`Created Port: ${portData.name} for SWC: ${swcData.name}`);
+      }
+    }
+    
+    // Create interfaces
+    for (const interfaceData of artifacts.interfaces) {
+      store.createInterface({
+        name: interfaceData.name,
+        type: interfaceData.type,
+        dataElements: interfaceData.dataElements
+      });
+      
+      console.log(`Created Interface: ${interfaceData.name}`);
+    }
+    
+    console.log('Artifacts integration completed successfully');
   }
 }

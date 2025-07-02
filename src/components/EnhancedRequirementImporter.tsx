@@ -1,369 +1,256 @@
 import React, { useState, useCallback } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useToast } from "@/components/ui/use-toast";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
+import { useToast } from "@/components/ui/use-toast";
+import { 
+  Upload, 
+  FileText, 
+  CheckCircle, 
+  AlertCircle, 
+  Settings,
+  Zap,
+  Network,
+  Clock,
+  Database
+} from "lucide-react";
 import { useAutosarStore } from "@/store/autosarStore";
 import { RequirementParser, RequirementDocument } from "@/utils/requirementParser";
 import { AutosarGenerator } from "@/utils/autosarGenerator";
-import { FileText, Upload, Wand2, CheckCircle, AlertCircle, Play, Clock, Zap, Database, Settings } from "lucide-react";
 
 const EnhancedRequirementImporter = () => {
   const { toast } = useToast();
-  const { projects, currentProject, createProject, loadProject, createSWC, createInterface, createPort, createRunnable, addAccessPoint } = useAutosarStore();
+  const store = useAutosarStore();
   
   const [requirements, setRequirements] = useState<RequirementDocument[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [processingStep, setProcessingStep] = useState('');
-  const [processingProgress, setProcessingProgress] = useState(0);
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
-  const [createNewProject, setCreateNewProject] = useState(false);
-  const [newProjectName, setNewProjectName] = useState('');
-  const [validationResults, setValidationResults] = useState<{ [key: string]: boolean }>({});
-  const [showSampleData, setShowSampleData] = useState(false);
+  const [textInput, setTextInput] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("functional");
+  const [selectedPriority, setSelectedPriority] = useState<string>("medium");
 
-  const validateRequirement = useCallback((req: RequirementDocument): boolean => {
-    const hasBasicFields = !!(req.id && req.shortName && req.description && req.description.length > 10);
-    const hasValidCategory = ['FUNCTIONAL', 'NON_FUNCTIONAL', 'CONSTRAINT', 'INTERFACE'].includes(req.category);
-    const hasValidPriority = ['HIGH', 'MEDIUM', 'LOW'].includes(req.priority);
-    
-    return hasBasicFields && hasValidCategory && hasValidPriority;
-  }, []);
+  const sampleRequirements = [
+    {
+      id: "REQ_001",
+      shortName: "Temperature Sensor Communication",
+      description: "The software component sensor_swc shall send a temperature value to the software component EMS_swc using a Sender-Receiver communication model, with a transmission period of 10 milliseconds.",
+      category: "functional" as const,
+      priority: "high" as const,
+      derivedElements: {
+        swcs: ["sensor_swc", "EMS_swc"],
+        interfaces: ["sensor_EMS_portinterface"],
+        signals: ["temperature"],
+        ports: ["sensor_ProvidedPort", "EMS_RequiredPort"],
+        runnables: ["sensor_swc_init", "sensor_swc_10ms", "EMS_swc_init", "EMS_swc_10ms"]
+      },
+      communication: {
+        interfaceType: "SenderReceiver" as const,
+        direction: "sender" as const,
+        dataElements: [
+          { name: "temperature", type: "uint16", category: "VALUE" }
+        ]
+      },
+      timing: {
+        type: "periodic" as const,
+        period: 10,
+        unit: "ms" as const
+      },
+      ecuBehavior: {
+        ecuName: "MainECU"
+      }
+    },
+    {
+      id: "REQ_002", 
+      shortName: "Brake Pedal Signal Processing",
+      description: "The brake pedal sensor shall transmit brake status to the brake controller every 5ms using client-server interface.",
+      category: "safety" as const,
+      priority: "critical" as const,
+      derivedElements: {
+        swcs: ["BrakePedalSensor", "BrakeController"],
+        interfaces: ["BrakePedal_Interface"],
+        signals: ["brakeStatus"],
+        ports: ["BrakePedal_ProvidedPort", "BrakeController_RequiredPort"],
+        runnables: ["BrakePedalSensor_init", "BrakePedalSensor_5ms", "BrakeController_init", "BrakeController_5ms"]
+      },
+      communication: {
+        interfaceType: "ClientServer" as const,
+        direction: "receiver" as const,
+        dataElements: [
+          { name: "brakeStatus", type: "boolean", category: "VALUE" }
+        ]
+      },
+      timing: {
+        type: "periodic" as const,
+        period: 5,
+        unit: "ms" as const
+      },
+      ecuBehavior: {
+        ecuName: "BrakeECU"
+      }
+    },
+    {
+      id: "REQ_003",
+      shortName: "Engine RPM Monitoring", 
+      description: "The engine speed sensor shall provide RPM data to multiple ECUs including transmission and dashboard display components.",
+      category: "diagnostic" as const,
+      priority: "medium" as const,
+      derivedElements: {
+        swcs: ["EngineSpeedSensor", "TransmissionController"],
+        interfaces: ["EngineRPM_Interface"],
+        signals: ["engineRPM"],
+        ports: ["EngineSpeed_ProvidedPort", "Transmission_RequiredPort"],
+        runnables: ["EngineSpeedSensor_init", "EngineSpeedSensor_20ms", "TransmissionController_init", "TransmissionController_20ms"]
+      },
+      timing: {
+        type: "periodic" as const,
+        period: 20,
+        unit: "ms" as const
+      },
+      communication: {
+        interfaceType: "SenderReceiver" as const,
+        direction: "both" as const,
+        dataElements: [
+          { name: "engineRPM", type: "uint16", category: "VALUE" }
+        ]
+      },
+      ecuBehavior: {
+        ecuName: "EngineECU"
+      }
+    }
+  ];
 
-  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const allowedTypes = ['.txt', '.doc', '.docx', '.xls', '.xlsx'];
-    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
-    
-    if (!allowedTypes.includes(fileExtension)) {
+  const handleTextProcessing = async () => {
+    if (!textInput.trim()) {
       toast({
-        title: "Unsupported File Format",
-        description: "Please upload .txt, .doc, .docx, .xls, or .xlsx files",
+        title: "Input Required",
+        description: "Please enter requirement text to process",
         variant: "destructive",
       });
       return;
     }
 
     setIsProcessing(true);
-    setProcessingStep('Reading file...');
-    setProcessingProgress(20);
-
     try {
-      setProcessingStep('Parsing requirements...');
-      setProcessingProgress(40);
-      
-      const parsedRequirements = await RequirementParser.parseFile(file);
-      
-      setProcessingStep('Validating requirements...');
-      setProcessingProgress(70);
-      
-      // Enhanced validation
-      const validation: { [key: string]: boolean } = {};
-      for (const req of parsedRequirements) {
-        validation[req.id] = validateRequirement(req);
-      }
-      setValidationResults(validation);
-
-      setProcessingStep('Finalizing...');
-      setProcessingProgress(100);
-      
-      setRequirements(parsedRequirements);
-
-      const validCount = Object.values(validation).filter(Boolean).length;
-      const totalCount = parsedRequirements.length;
-
-      toast({
-        title: "File Processed Successfully",
-        description: `${totalCount} requirements extracted, ${validCount} valid requirements found`,
+      // Parse the text input into a requirement document
+      const parsedRequirement = RequirementParser.parseText(textInput, {
+        category: selectedCategory as any,
+        priority: selectedPriority as any
       });
 
-    } catch (error: any) {
+      console.log('Parsed requirement:', parsedRequirement);
+
+      // Generate AUTOSAR artifacts
+      const artifacts = AutosarGenerator.generateArtifacts([parsedRequirement]);
+      
+      console.log('Generated artifacts:', artifacts);
+
+      // Integrate artifacts into the store using the new method
+      AutosarGenerator.integrateArtifactsIntoStore(artifacts, store);
+
+      // Update requirements state
+      setRequirements([parsedRequirement]);
+
       toast({
-        title: "Processing Error",
-        description: error.message || "Failed to process the file",
+        title: "Requirements Processed",
+        description: `Successfully processed requirement and generated ${artifacts.swcs.length} SWCs with ${artifacts.runnables.length} runnables`,
+      });
+
+      // Clear input
+      setTextInput("");
+      
+    } catch (error) {
+      console.error('Error processing requirements:', error);
+      toast({
+        title: "Processing Failed",
+        description: "Failed to process requirements. Please check the input format.",
         variant: "destructive",
       });
     } finally {
       setIsProcessing(false);
-      setProcessingStep('');
-      setProcessingProgress(0);
     }
-  }, [toast, validateRequirement]);
+  };
 
-  const loadSampleData = useCallback(() => {
-    const sampleRequirements: RequirementDocument[] = [
-      {
-        id: "REQ-001",
-        shortName: "Engine_Speed_Control",
-        description: "The Engine Controller shall read engine speed data every 10ms and provide speed information via CAN interface using uint16 data type.",
-        category: "FUNCTIONAL",
-        priority: "HIGH",
-        source: "SAMPLE",
-        derivedElements: {
-          swcs: ["EngineController"],
-          interfaces: ["EngineSpeedInterface"],
-          signals: ["EngineSpeedSignal"],
-          ports: ["SpeedDataPort"],
-          runnables: ["Engine_10ms"]
-        },
-        timing: {
-          period: 10,
-          unit: "ms",
-          type: "periodic"
-        },
-        communication: {
-          interfaceType: "SenderReceiver",
-          direction: "sender",
-          dataElements: [
-            { name: "EngineSpeed", type: "uint16", category: "VALUE" },
-            { name: "SpeedStatus", type: "uint8", category: "VALUE" }
-          ]
-        }
-      },
-      {
-        id: "REQ-002", 
-        shortName: "Brake_Pressure_Monitor",
-        description: "The Brake System SWC must receive brake pressure signals and trigger emergency response when pressure exceeds threshold.",
-        category: "INTERFACE",
-        priority: "HIGH",
-        source: "SAMPLE",
-        derivedElements: {
-          swcs: ["BrakeSystemController"],
-          interfaces: ["BrakePressureInterface"],
-          signals: ["BrakePressureSignal"],
-          ports: ["PressureInputPort"],
-          runnables: ["BrakeSystem_Event"]
-        },
-        timing: {
-          type: "event"
-        },
-        communication: {
-          interfaceType: "SenderReceiver",
-          direction: "receiver",
-          dataElements: [
-            { name: "BrakePressure", type: "uint16", category: "VALUE" },
-            { name: "EmergencyFlag", type: "boolean", category: "VALUE" }
-          ]
-        }
-      },
-      {
-        id: "REQ-003",
-        shortName: "System_Initialize", 
-        description: "The System Controller shall initialize all subsystems during startup and perform self-diagnostics.",
-        category: "FUNCTIONAL",
-        priority: "MEDIUM",
-        source: "SAMPLE",
-        derivedElements: {
-          swcs: ["SystemController"],
-          interfaces: ["DiagnosticInterface"],
-          signals: ["DiagnosticSignal"],
-          ports: ["DiagnosticOutputPort"],
-          runnables: ["System_Init"]
-        },
-        timing: {
-          type: "init"
-        },
-        communication: {
-          interfaceType: "SenderReceiver",
-          direction: "both",
-          dataElements: [
-            { name: "InitStatus", type: "uint8", category: "VALUE" },
-            { name: "DiagnosticCode", type: "uint32", category: "VALUE" }
-          ]
-        }
-      }
-    ];
+  const handleSampleLoad = async (sampleReq: any) => {
+    setIsProcessing(true);
+    try {
+      console.log('Loading sample requirement:', sampleReq);
 
-    setRequirements(sampleRequirements);
-    
-    // Validate sample requirements
-    const validation: { [key: string]: boolean } = {};
-    for (const req of sampleRequirements) {
-      validation[req.id] = validateRequirement(req);
-    }
-    setValidationResults(validation);
-    setShowSampleData(true);
+      // Generate AUTOSAR artifacts from sample
+      const artifacts = AutosarGenerator.generateArtifacts([sampleReq]);
+      
+      console.log('Generated artifacts from sample:', artifacts);
 
-    toast({
-      title: "Sample Data Loaded",
-      description: `${sampleRequirements.length} sample requirements loaded successfully`,
-    });
-  }, [validateRequirement, toast]);
+      // Integrate artifacts into the store using the new method
+      AutosarGenerator.integrateArtifactsIntoStore(artifacts, store);
 
-  const generateArtifacts = useCallback(async () => {
-    if (requirements.length === 0) {
+      // Update requirements state
+      setRequirements([sampleReq]);
+
       toast({
-        title: "No Requirements",
-        description: "Please import requirements first or load sample data",
+        title: "Sample Loaded",
+        description: `Successfully loaded sample and generated ${artifacts.swcs.length} SWCs with ${artifacts.runnables.length} runnables`,
+      });
+      
+    } catch (error) {
+      console.error('Error loading sample:', error);
+      toast({
+        title: "Loading Failed",
+        description: "Failed to load sample requirement.",
         variant: "destructive",
       });
-      return;
+    } finally {
+      setIsProcessing(false);
     }
+  };
 
-    const validRequirements = requirements.filter(req => validationResults[req.id]);
-    if (validRequirements.length === 0) {
-      toast({
-        title: "No Valid Requirements",
-        description: "Please ensure at least one requirement passes validation",
-        variant: "destructive",
-      });
-      return;
-    }
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-    let targetProject = currentProject;
-
-    // Handle project selection/creation
-    if (!targetProject) {
-      if (createNewProject) {
-        if (!newProjectName.trim()) {
-          toast({
-            title: "Project Name Required",
-            description: "Please enter a name for the new project",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        createProject({
-          name: newProjectName,
-          description: `Project created from ${validRequirements.length} requirements - ${new Date().toLocaleDateString()}`,
-          autosarVersion: "4.2.2",
-          swcs: [],
-          interfaces: [],
-          dataTypes: [],
-          dataElements: [],
-          connections: [],
-          ecuCompositions: [],
-          isDraft: true,
-          autoSaveEnabled: true,
-        });
-
-        targetProject = projects[projects.length - 1];
-      } else if (selectedProjectId) {
-        loadProject(selectedProjectId);
-        targetProject = projects.find(p => p.id === selectedProjectId) || null;
-      } else {
+    setIsProcessing(true);
+    try {
+      const parsedRequirements = await RequirementParser.parseFile(file);
+      
+      if (parsedRequirements.length === 0) {
         toast({
-          title: "No Project Selected",
-          description: "Please select an existing project or create a new one",
+          title: "No Requirements Found",
+          description: "The uploaded file doesn't contain any recognizable requirements.",
           variant: "destructive",
         });
         return;
       }
-    }
 
-    if (!targetProject) {
+      // Generate AUTOSAR artifacts
+      const artifacts = AutosarGenerator.generateArtifacts(parsedRequirements);
+      
+      console.log('Generated artifacts from file:', artifacts);
+
+      // Integrate artifacts into the store using the new method
+      AutosarGenerator.integrateArtifactsIntoStore(artifacts, store);
+
+      setRequirements(parsedRequirements);
+
       toast({
-        title: "Project Error",
-        description: "Unable to load or create project",
-        variant: "destructive",
+        title: "File Processed",
+        description: `Successfully processed ${parsedRequirements.length} requirements and generated ${artifacts.swcs.length} SWCs`,
       });
-      return;
-    }
-
-    try {
-      setIsProcessing(true);
-      setProcessingStep('Analyzing requirements...');
-      setProcessingProgress(10);
-
-      const artifacts = AutosarGenerator.generateArtifacts(validRequirements);
-
-      setProcessingStep('Creating SWCs...');
-      setProcessingProgress(30);
-
-      // Create SWCs
-      for (const swc of artifacts.swcs) {
-        if (!targetProject.swcs.find(s => s.name === swc.name)) {
-          createSWC(swc);
-        }
-      }
-
-      setProcessingStep('Creating interfaces...');
-      setProcessingProgress(50);
-
-      // Create Interfaces
-      for (const iface of artifacts.interfaces) {
-        if (!targetProject.interfaces.find(i => i.name === iface.name)) {
-          createInterface(iface);
-        }
-      }
-
-      setProcessingStep('Creating ports...');
-      setProcessingProgress(70);
-
-      // Get updated project state
-      const updatedProject = projects.find(p => p.id === targetProject.id) || targetProject;
-
-      // Create Ports
-      for (const port of artifacts.ports) {
-        const swc = updatedProject.swcs.find(s => s.name === port.swcName);
-        if (swc && !swc.ports?.find(p => p.name === port.name)) {
-          createPort({ swcId: swc.id, ...port });
-        }
-      }
-
-      setProcessingStep('Creating runnables...');
-      setProcessingProgress(85);
-
-      // Create Runnables
-      for (const runnable of artifacts.runnables) {
-        const swc = updatedProject.swcs.find(s => s.name === runnable.swcName);
-        if (swc && !swc.runnables?.find(r => r.name === runnable.name)) {
-          createRunnable({ swcId: swc.id, ...runnable });
-        }
-      }
-
-      setProcessingStep('Creating access points...');
-      setProcessingProgress(95);
-
-      // Create Access Points
-      for (const ap of artifacts.accessPoints) {
-        const swc = updatedProject.swcs.find(s => s.name === ap.swcName);
-        const runnable = swc?.runnables?.find(r => r.name === ap.runnableName);
-        if (swc && runnable) {
-          addAccessPoint(runnable.id, {
-            ...ap,
-            swcId: swc.id,
-            runnableId: runnable.id
-          });
-        }
-      }
-
-      setProcessingStep('Finalizing...');
-      setProcessingProgress(100);
-
+      
+    } catch (error) {
+      console.error('File processing error:', error);
       toast({
-        title: "Artifacts Generated Successfully",
-        description: `Created ${artifacts.swcs.length} SWCs, ${artifacts.interfaces.length} interfaces, ${artifacts.ports.length} ports, and ${artifacts.runnables.length} runnables from ${validRequirements.length} requirements`,
-      });
-
-      // Clear form
-      setRequirements([]);
-      setValidationResults({});
-      setSelectedProjectId('');
-      setCreateNewProject(false);
-      setNewProjectName('');
-      setShowSampleData(false);
-
-    } catch (error: any) {
-      toast({
-        title: "Generation Error",
-        description: `Failed to generate artifacts: ${error.message}`,
+        title: "Processing Failed",
+        description: "Failed to process the uploaded file. Please check the format.",
         variant: "destructive",
       });
     } finally {
       setIsProcessing(false);
-      setProcessingStep('');
-      setProcessingProgress(0);
+      // Reset file input
+      event.target.value = '';
     }
-  }, [requirements, validationResults, currentProject, createNewProject, newProjectName, selectedProjectId, projects, toast, createProject, loadProject, createSWC, createInterface, createPort, createRunnable, addAccessPoint]);
+  };
 
   const getCategoryColor = (category: RequirementDocument['category']) => {
     switch (category) {
@@ -395,286 +282,244 @@ const EnhancedRequirementImporter = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Enhanced Requirement Importer</h1>
+          <h1 className="text-3xl font-bold text-foreground">Enhanced Requirement Importer</h1>
           <p className="text-muted-foreground mt-1">
-            Import requirements from documents and generate AUTOSAR 4.2.2 compliant artifacts
+            Import and automatically generate AUTOSAR artifacts from requirements
           </p>
         </div>
-        <Button 
-          variant="outline" 
-          onClick={loadSampleData}
-          disabled={isProcessing}
-        >
-          <Database className="h-4 w-4 mr-2" />
-          Load Sample Data
-        </Button>
       </div>
 
-      {/* Progress indicator */}
-      {isProcessing && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">{processingStep}</span>
-                <span className="text-sm text-muted-foreground">{processingProgress}%</span>
-              </div>
-              <Progress value={processingProgress} className="w-full" />
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Project Selection */}
-      <Card>
+      {/* Text Input Section */}
+      <Card className="autosar-card">
         <CardHeader>
-          <CardTitle>Target Project</CardTitle>
-          <CardDescription>Select or create a project for artifact generation</CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Text Input Processing
+          </CardTitle>
+          <CardDescription>
+            Enter requirement text and let AI parse it into AUTOSAR components
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {currentProject ? (
-            <div className="p-4 bg-primary/10 rounded-lg">
-              <h3 className="font-medium text-primary">Current Project: {currentProject.name}</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                AUTOSAR {currentProject.autosarVersion} | Artifacts will be generated here
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <input
-                  type="radio"
-                  id="existing"
-                  name="projectOption"
-                  checked={!createNewProject}
-                  onChange={() => setCreateNewProject(false)}
-                />
-                <Label htmlFor="existing">Use existing project</Label>
-              </div>
-              
-              {!createNewProject && (
-                <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+          <div className="grid gap-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="category">Category</Label>
+                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a project" />
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {projects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.name} - AUTOSAR {project.autosarVersion}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="functional">Functional</SelectItem>
+                    <SelectItem value="safety">Safety</SelectItem>
+                    <SelectItem value="diagnostic">Diagnostic</SelectItem>
+                    <SelectItem value="performance">Performance</SelectItem>
                   </SelectContent>
                 </Select>
-              )}
-
-              <div className="flex items-center space-x-2">
-                <input
-                  type="radio"
-                  id="new"
-                  name="projectOption"
-                  checked={createNewProject}
-                  onChange={() => setCreateNewProject(true)}
-                />
-                <Label htmlFor="new">Create new project</Label>
               </div>
-
-              {createNewProject && (
-                <Input
-                  placeholder="Enter new project name"
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                />
-              )}
+              <div className="space-y-2">
+                <Label htmlFor="priority">Priority</Label>
+                <Select value={selectedPriority} onValueChange={setSelectedPriority}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="critical">Critical</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          )}
+            
+            <div className="space-y-2">
+              <Label htmlFor="text-input">Requirement Description</Label>
+              <Textarea
+                id="text-input"
+                placeholder="Enter your requirement here (e.g., 'The sensor_swc shall send temperature to EMS_swc every 10ms')"
+                value={textInput}
+                onChange={(e) => setTextInput(e.target.value)}
+                className="min-h-[100px]"
+              />
+            </div>
+            
+            <Button 
+              onClick={handleTextProcessing} 
+              disabled={isProcessing}
+              className="autosar-button"
+            >
+              {isProcessing ? "Processing..." : "Process Requirement"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
-      {/* File Upload */}
-      <Card>
+      {/* File Upload Section */}
+      <Card className="autosar-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Upload className="h-5 w-5" />
-            Import Requirements Document
+            File Upload
           </CardTitle>
           <CardDescription>
-            Supported formats: .txt, .doc, .docx, .xls, .xlsx | Natural language processing enabled
+            Upload Word documents, Excel files, or plain text files containing requirements
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Input
-            type="file"
-            accept=".txt,.doc,.docx,.xls,.xlsx"
-            onChange={handleFileUpload}
-            disabled={isProcessing}
-          />
-          {isProcessing && (
-            <p className="text-sm text-muted-foreground mt-2">Processing document...</p>
-          )}
+          <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
+            <input
+              type="file"
+              accept=".docx,.xlsx,.txt,.csv"
+              onChange={handleFileUpload}
+              className="hidden"
+              id="file-upload"
+              disabled={isProcessing}
+            />
+            <label htmlFor="file-upload" className="cursor-pointer">
+              <div className="flex flex-col items-center gap-4">
+                <div className="w-12 h-12 autosar-gradient rounded-full flex items-center justify-center">
+                  <Upload className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <p className="text-lg font-medium">
+                    {isProcessing ? "Processing..." : "Drop files here or click to browse"}
+                  </p>
+                  <p className="text-muted-foreground">
+                    Supports .docx, .xlsx, .txt, .csv files
+                  </p>
+                </div>
+              </div>
+            </label>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Requirements Display */}
+      {/* Sample Requirements */}
+      <Card className="autosar-card">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-5 w-5" />
+            Sample Requirements
+          </CardTitle>
+          <CardDescription>
+            Try these pre-configured examples to see the tool in action
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4">
+            {sampleRequirements.map((req, index) => (
+              <div key={index} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex-1">
+                    <h3 className="font-medium">{req.shortName}</h3>
+                    <Badge variant="outline" className="mt-1 mr-2 capitalize">
+                      {req.category}
+                    </Badge>
+                    <Badge variant="secondary" className="capitalize">
+                      {req.priority}
+                    </Badge>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleSampleLoad(req)}
+                    disabled={isProcessing}
+                  >
+                    Load Sample
+                  </Button>
+                </div>
+                <p className="text-sm text-muted-foreground mb-3">
+                  {req.description}
+                </p>
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <Settings className="h-3 w-3" />
+                    {req.derivedElements.swcs.length} SWCs
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Network className="h-3 w-3" />
+                    {req.derivedElements.interfaces.length} Interfaces
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Zap className="h-3 w-3" />
+                    {req.derivedElements.runnables?.length || 0} Runnables
+                  </span>
+                  {req.timing && (
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      {req.timing.period}{req.timing.unit}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Results Section */}
       {requirements.length > 0 && (
-        <Card>
+        <Card className="autosar-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              {showSampleData ? 'Sample Requirements' : 'Imported Requirements'} ({requirements.length})
+              <CheckCircle className="h-5 w-5 text-green-500" />
+              Processing Results
             </CardTitle>
             <CardDescription>
-              Review and validate requirements before generating AUTOSAR artifacts
+              Successfully processed requirements and generated AUTOSAR artifacts
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="list" className="w-full">
-              <TabsList>
-                <TabsTrigger value="list">Requirements List</TabsTrigger>
-                <TabsTrigger value="validation">Validation Report</TabsTrigger>
-                <TabsTrigger value="preview">Generation Preview</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="list" className="space-y-4">
-                <div className="max-h-96 overflow-y-auto space-y-3">
-                  {requirements.map((req) => (
-                    <div key={req.id} className="border rounded-lg p-4 space-y-3">
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1">
-                          <h3 className="font-semibold">{req.shortName}</h3>
-                          <p className="text-sm font-mono text-muted-foreground">{req.id}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {validationResults[req.id] ? (
-                            <CheckCircle className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <AlertCircle className="h-4 w-4 text-red-500" />
-                          )}
-                          <Badge className={getCategoryColor(req.category)}>
-                            {req.category}
-                          </Badge>
-                          <Badge className={getPriorityColor(req.priority)}>
-                            {req.priority}
-                          </Badge>
-                          {req.timing && (
-                            <Badge variant="outline" className="flex items-center gap-1">
-                              {getTimingIcon(req.timing)}
-                              {req.timing.type === 'periodic' ? `${req.timing.period}${req.timing.unit}` : req.timing.type}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                      <p className="text-sm">{req.description}</p>
-                      
-                      {/* Enhanced information display */}
-                      {(req.communication || req.ecuBehavior || req.derivedElements) && (
-                        <div className="pt-2 border-t space-y-2">
-                          {req.communication && (
-                            <div className="text-xs text-muted-foreground">
-                              <span className="font-medium">Communication:</span> {req.communication.direction}
-                              {req.communication.dataElements && (
-                                <span> | Data: {req.communication.dataElements.map(de => `${de.name}(${de.type})`).join(', ')}</span>
-                              )}
-                            </div>
-                          )}
-                          {req.derivedElements && req.derivedElements.swcs.length > 0 && (
-                            <div className="text-xs text-muted-foreground">
-                              <span className="font-medium">Derived SWCs:</span> {req.derivedElements.swcs.join(', ')}
-                            </div>
-                          )}
-                        </div>
-                      )}
+            <div className="space-y-4">
+              {requirements.map((req, index) => (
+                <div key={index} className="border rounded-lg p-4">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <h3 className="font-medium">{req.shortName}</h3>
+                      <p className="text-sm text-muted-foreground mt-1">{req.id}</p>
                     </div>
-                  ))}
-                </div>
-              </TabsContent>
-
-              <TabsContent value="validation" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <h3 className="font-medium text-green-600">Valid Requirements</h3>
-                    <div className="text-2xl font-bold text-green-600">
-                      {Object.values(validationResults).filter(Boolean).length}
+                    <div className="flex gap-2">
+                      <Badge variant="outline" className="capitalize">
+                        {req.category}
+                      </Badge>
+                      <Badge variant="secondary" className="capitalize">
+                        {req.priority}
+                      </Badge>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <h3 className="font-medium text-red-600">Invalid Requirements</h3>
-                    <div className="text-2xl font-bold text-red-600">
-                      {Object.values(validationResults).filter(v => !v).length}
+                  
+                  <p className="text-sm mb-4">{req.description}</p>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <p className="font-medium text-muted-foreground">SWCs</p>
+                      <p>{req.derivedElements.swcs.join(", ")}</p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-muted-foreground">Interfaces</p>
+                      <p>{req.derivedElements.interfaces.join(", ")}</p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-muted-foreground">Signals</p>
+                      <p>{req.derivedElements.signals.join(", ")}</p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-muted-foreground">Timing</p>
+                      <p>
+                        {req.timing ? 
+                          `${req.timing.period}${req.timing.unit} (${req.timing.type})` : 
+                          "Not specified"
+                        }
+                      </p>
                     </div>
                   </div>
                 </div>
-                
-                {Object.entries(validationResults).some(([_, valid]) => !valid) && (
-                  <div className="space-y-2">
-                    <h4 className="font-medium">Issues Found:</h4>
-                    <ul className="list-disc list-inside text-sm text-muted-foreground">
-                      {Object.entries(validationResults)
-                        .filter(([_, valid]) => !valid)
-                        .map(([reqId, _]) => {
-                          const req = requirements.find(r => r.id === reqId);
-                          return (
-                            <li key={reqId}>
-                              {reqId}: {!req?.description || req.description.length < 10 ? 'Description too short' : 'Missing required fields'}
-                            </li>
-                          );
-                        })}
-                    </ul>
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="preview" className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Preview of AUTOSAR artifacts to be generated from valid requirements:
-                </p>
-                
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="text-center p-4 border rounded-lg">
-                    <Settings className="h-8 w-8 mx-auto mb-2 text-blue-500" />
-                    <div className="font-semibold">SWCs</div>
-                    <div className="text-sm text-muted-foreground">Software Components</div>
-                  </div>
-                  <div className="text-center p-4 border rounded-lg">
-                    <Database className="h-8 w-8 mx-auto mb-2 text-green-500" />
-                    <div className="font-semibold">Interfaces</div>
-                    <div className="text-sm text-muted-foreground">Port Interfaces</div>
-                  </div>
-                  <div className="text-center p-4 border rounded-lg">
-                    <Zap className="h-8 w-8 mx-auto mb-2 text-yellow-500" />
-                    <div className="font-semibold">Runnables</div>
-                    <div className="text-sm text-muted-foreground">Executable Functions</div>
-                  </div>
-                  <div className="text-center p-4 border rounded-lg">
-                    <FileText className="h-8 w-8 mx-auto mb-2 text-purple-500" />
-                    <div className="font-semibold">Access Points</div>
-                    <div className="text-sm text-muted-foreground">RTE Access</div>
-                  </div>
-                </div>
-              </TabsContent>
-            </Tabs>
-
-            <div className="flex justify-end pt-4 border-t">
-              <Button 
-                onClick={generateArtifacts} 
-                disabled={isProcessing || Object.values(validationResults).filter(Boolean).length === 0}
-                className="flex items-center gap-2"
-                size="lg"
-              >
-                {isProcessing ? (
-                  <>
-                    <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Wand2 className="h-4 w-4" />
-                    Generate AUTOSAR Artifacts
-                  </>
-                )}
-              </Button>
+              ))}
             </div>
           </CardContent>
         </Card>
