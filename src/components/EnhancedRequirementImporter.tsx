@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +23,10 @@ const EnhancedRequirementImporter = () => {
   const [newProjectName, setNewProjectName] = useState('');
   const [validationResults, setValidationResults] = useState<{ [key: string]: boolean }>({});
 
+  const validateRequirement = useCallback((req: RequirementDocument): boolean => {
+    return !!(req.id && req.shortName && req.description && req.description.length > 10);
+  }, []);
+
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -48,7 +51,7 @@ const EnhancedRequirementImporter = () => {
       // Validate requirements
       const validation: { [key: string]: boolean } = {};
       for (const req of parsedRequirements) {
-        validation[req.id] = this.validateRequirement(req);
+        validation[req.id] = validateRequirement(req);
       }
       setValidationResults(validation);
 
@@ -65,11 +68,7 @@ const EnhancedRequirementImporter = () => {
     } finally {
       setIsProcessing(false);
     }
-  }, [toast]);
-
-  const validateRequirement = (req: RequirementDocument): boolean => {
-    return !!(req.id && req.shortName && req.description && req.description.length > 10);
-  };
+  }, [toast, validateRequirement]);
 
   const generateArtifacts = useCallback(async () => {
     if (requirements.length === 0) {
