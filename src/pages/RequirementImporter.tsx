@@ -1,13 +1,13 @@
 
 import React from 'react';
-import EnhancedRequirementImporter from '@/components/EnhancedRequirementImporter';
+import RequirementImporter from '@/components/RequirementImporter';
 
-const RequirementImporter = () => {
+const RequirementImporterPage = () => {
   return (
     <div className="container mx-auto py-6">
-      <EnhancedRequirementImporter />
+      <RequirementImporter />
     </div>
   );
 };
 
-export default RequirementImporter;
+export default RequirementImporterPage;

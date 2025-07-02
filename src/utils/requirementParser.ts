@@ -16,7 +16,6 @@ export interface RequirementDocument {
     ports: string[];
     runnables: string[];
   };
-  // Enhanced fields for AUTOSAR generation
   timing?: {
     period?: number;
     unit?: 'ms' | 's';
@@ -24,6 +23,7 @@ export interface RequirementDocument {
   };
   communication?: {
     direction?: 'sender' | 'receiver' | 'both';
+    interfaceType?: 'SenderReceiver' | 'ClientServer';
     dataElements?: Array<{
       name: string;
       type: string;
@@ -76,76 +76,266 @@ export class RequirementParser {
 
   private static extractRequirementsFromText(text: string): RequirementDocument[] {
     const requirements: RequirementDocument[] = [];
-    const lines = text.split('\n');
-    let currentReq: Partial<RequirementDocument> | null = null;
+    const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim());
     
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
+    for (let i = 0; i < paragraphs.length; i++) {
+      const paragraph = paragraphs[i].trim();
+      if (paragraph.length < 20) continue; // Skip very short paragraphs
       
-      // Enhanced requirement detection patterns
-      const reqMatch = trimmed.match(/^(?:REQ-\d+|(\d+\.|\d+\)|\*|\-|\•)\s*)/);
-      const isReqStart = reqMatch || this.isRequirementStart(trimmed);
-      
-      if (isReqStart) {
-        if (currentReq && currentReq.description) {
-          requirements.push(this.finalizeRequirement(currentReq));
-        }
-        
-        currentReq = {
-          id: this.generateRequirementId(trimmed, requirements.length),
-          shortName: this.extractShortName(trimmed),
-          description: this.cleanDescription(trimmed),
-          category: this.inferCategory(trimmed),
-          priority: this.inferPriority(trimmed),
-          source: 'IMPORTED',
-          derivedElements: { swcs: [], interfaces: [], ports: [], runnables: [] },
-          timing: this.extractTiming(trimmed),
-          communication: this.extractCommunication(trimmed),
-          ecuBehavior: this.extractEcuBehavior(trimmed)
-        };
-      } else if (currentReq && trimmed) {
-        currentReq.description += ' ' + trimmed;
-        // Update derived elements as we build the description
-        this.updateDerivedElements(currentReq, trimmed);
+      const req = this.parseNaturalLanguageRequirement(paragraph, i + 1);
+      if (req) {
+        requirements.push(req);
       }
     }
     
-    if (currentReq && currentReq.description) {
-      requirements.push(this.finalizeRequirement(currentReq));
-    }
-    
     return requirements;
+  }
+
+  private static parseNaturalLanguageRequirement(text: string, index: number): RequirementDocument | null {
+    const cleanText = text.replace(/\s+/g, ' ').trim();
+    
+    // Extract SWCs - look for components, controllers, systems
+    const swcs = this.extractSwcNames(cleanText);
+    
+    // Extract timing information
+    const timing = this.extractTimingInfo(cleanText);
+    
+    // Extract communication info
+    const communication = this.extractCommunicationInfo(cleanText);
+    
+    // Extract data elements
+    const dataElements = this.extractDataElements(cleanText);
+    
+    // Generate requirement ID
+    const id = `REQ-${index.toString().padStart(3, '0')}`;
+    
+    // Generate short name from first few words
+    const shortName = this.generateShortName(cleanText);
+    
+    return {
+      id,
+      shortName,
+      description: cleanText,
+      category: this.inferCategory(cleanText),
+      priority: this.inferPriority(cleanText),
+      source: 'IMPORTED',
+      derivedElements: {
+        swcs,
+        interfaces: this.generateInterfaceNames(swcs, communication),
+        ports: this.generatePortNames(swcs, communication),
+        runnables: this.generateRunnableNames(swcs, timing)
+      },
+      timing,
+      communication: {
+        ...communication,
+        dataElements
+      }
+    };
+  }
+
+  private static extractSwcNames(text: string): string[] {
+    const swcs: string[] = [];
+    const patterns = [
+      // Explicit mentions
+      /(\w+)(?:\s+(?:controller|component|swc|system|manager|module))/gi,
+      // The X shall/must/will patterns
+      /(?:the\s+)?(\w+)(?:\s+shall|\s+must|\s+will|\s+should)/gi,
+      // ECU patterns
+      /(\w+)(?:\s+ecu)/gi
+    ];
+
+    for (const pattern of patterns) {
+      let match;
+      while ((match = pattern.exec(text)) !== null) {
+        const name = this.toPascalCase(match[1]);
+        if (name.length > 2 && !this.isCommonWord(name) && !swcs.includes(name)) {
+          swcs.push(name);
+        }
+      }
+    }
+
+    // If no SWCs found, try to infer from context
+    if (swcs.length === 0) {
+      const words = text.split(/\s+/).slice(0, 10);
+      for (const word of words) {
+        const cleaned = word.replace(/[^a-zA-Z]/g, '');
+        if (cleaned.length > 3 && !this.isCommonWord(cleaned)) {
+          swcs.push(this.toPascalCase(cleaned));
+          break;
+        }
+      }
+    }
+
+    return swcs.length > 0 ? swcs : ['SystemController'];
+  }
+
+  private static extractTimingInfo(text: string): RequirementDocument['timing'] {
+    // Look for periodic timing
+    const periodicMatch = text.match(/(?:every|each|period(?:ic)?(?:ally)?)\s+(\d+)\s*(ms|millisecond|s|second)/i);
+    if (periodicMatch) {
+      return {
+        period: parseInt(periodicMatch[1]),
+        unit: periodicMatch[2].startsWith('ms') ? 'ms' : 's',
+        type: 'periodic'
+      };
+    }
+
+    // Look for event-based
+    if (/(?:event|trigger|interrupt|on\s+change|when)/i.test(text)) {
+      return { type: 'event' };
+    }
+
+    // Look for initialization
+    if (/(?:init|startup|begin|start|initialize)/i.test(text)) {
+      return { type: 'init' };
+    }
+
+    return undefined;
+  }
+
+  private static extractCommunicationInfo(text: string): Partial<RequirementDocument['communication']> {
+    const comm: Partial<RequirementDocument['communication']> = {};
+
+    // Determine direction
+    const hasSend = /(?:send|transmit|provide|output|write|publish)/i.test(text);
+    const hasReceive = /(?:receive|input|read|consume|get|subscribe)/i.test(text);
+
+    if (hasSend && hasReceive) {
+      comm.direction = 'both';
+    } else if (hasSend) {
+      comm.direction = 'sender';
+    } else if (hasReceive) {
+      comm.direction = 'receiver';
+    }
+
+    // Determine interface type
+    if (/(?:call|invoke|request|response|client|server)/i.test(text)) {
+      comm.interfaceType = 'ClientServer';
+    } else {
+      comm.interfaceType = 'SenderReceiver';
+    }
+
+    return comm;
+  }
+
+  private static extractDataElements(text: string): Array<{ name: string; type: string; size?: number }> {
+    const dataElements: Array<{ name: string; type: string; size?: number }> = [];
+    
+    // Common automotive data patterns
+    const patterns = [
+      { pattern: /(\w*)?(?:speed|velocity)(?:\s+(\w+))?/gi, defaultType: 'uint16', baseName: 'Speed' },
+      { pattern: /(\w*)?(?:temperature|temp)(?:\s+(\w+))?/gi, defaultType: 'sint16', baseName: 'Temperature' },
+      { pattern: /(\w*)?(?:pressure)(?:\s+(\w+))?/gi, defaultType: 'uint16', baseName: 'Pressure' },
+      { pattern: /(\w*)?(?:status|state)(?:\s+(\w+))?/gi, defaultType: 'uint8', baseName: 'Status' },
+      { pattern: /(\w*)?(?:position|angle)(?:\s+(\w+))?/gi, defaultType: 'uint16', baseName: 'Position' },
+      { pattern: /(\w*)?(?:flag|enable|disable)(?:\s+(\w+))?/gi, defaultType: 'boolean', baseName: 'Flag' },
+      { pattern: /(\w*)?(?:voltage|volt)(?:\s+(\w+))?/gi, defaultType: 'float32', baseName: 'Voltage' },
+      { pattern: /(\w*)?(?:current|amp)(?:\s+(\w+))?/gi, defaultType: 'float32', baseName: 'Current' },
+      { pattern: /(\w*)?(?:signal|data)(?:\s+(\w+))?/gi, defaultType: 'uint32', baseName: 'Signal' }
+    ];
+
+    for (const { pattern, defaultType, baseName } of patterns) {
+      let match;
+      while ((match = pattern.exec(text)) !== null) {
+        const prefix = match[1] ? this.toPascalCase(match[1]) : '';
+        const suffix = match[2] ? this.toPascalCase(match[2]) : '';
+        const name = prefix + baseName + suffix || baseName;
+        
+        if (!dataElements.find(de => de.name === name)) {
+          dataElements.push({
+            name,
+            type: defaultType
+          });
+        }
+      }
+    }
+
+    // If no specific data found, create a generic one
+    if (dataElements.length === 0) {
+      dataElements.push({
+        name: 'DataElement',
+        type: 'uint32'
+      });
+    }
+
+    return dataElements;
+  }
+
+  private static generateInterfaceNames(swcs: string[], communication?: Partial<RequirementDocument['communication']>): string[] {
+    const interfaces: string[] = [];
+    
+    for (const swc of swcs) {
+      const baseName = swc.replace(/Controller$/, '');
+      const interfaceName = baseName + 'Interface';
+      if (!interfaces.includes(interfaceName)) {
+        interfaces.push(interfaceName);
+      }
+    }
+
+    return interfaces.length > 0 ? interfaces : ['DataInterface'];
+  }
+
+  private static generatePortNames(swcs: string[], communication?: Partial<RequirementDocument['communication']>): string[] {
+    const ports: string[] = [];
+    
+    for (const swc of swcs) {
+      const baseName = swc.replace(/Controller$/, '');
+      
+      if (communication?.direction === 'sender' || communication?.direction === 'both') {
+        ports.push(baseName + 'OutputPort');
+      }
+      if (communication?.direction === 'receiver' || communication?.direction === 'both') {
+        ports.push(baseName + 'InputPort');
+      }
+      if (!communication?.direction) {
+        ports.push(baseName + 'Port');
+      }
+    }
+
+    return ports;
+  }
+
+  private static generateRunnableNames(swcs: string[], timing?: RequirementDocument['timing']): string[] {
+    const runnables: string[] = [];
+    
+    for (const swc of swcs) {
+      const baseName = swc.replace(/Controller$/, '');
+      
+      // Always add init runnable
+      runnables.push(baseName + '_Init');
+      
+      // Add timing-based runnable
+      if (timing?.type === 'periodic' && timing.period) {
+        runnables.push(`${baseName}_${timing.period}${timing.unit || 'ms'}`);
+      } else if (timing?.type === 'event') {
+        runnables.push(baseName + '_Event');
+      } else {
+        runnables.push(baseName + '_Main');
+      }
+    }
+
+    return runnables;
   }
 
   private static extractRequirementsFromTable(data: string[][]): RequirementDocument[] {
     const requirements: RequirementDocument[] = [];
     const headers = data[0] || [];
     
-    // Map column indices
     const colMap = this.mapTableColumns(headers);
     
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
       if (!row || row.length === 0) continue;
       
-      const description = row[colMap.description] || row[2] || 'No description provided';
+      const description = row[colMap.description] || row[2] || '';
+      if (description.length < 10) continue;
       
-      const req: RequirementDocument = {
-        id: row[colMap.id] || `REQ-${i.toString().padStart(3, '0')}`,
-        shortName: row[colMap.shortName] || `Requirement_${i}`,
-        description,
-        category: this.mapCategory(row[colMap.category]),
-        priority: this.mapPriority(row[colMap.priority]),
-        source: 'IMPORTED',
-        derivedElements: { swcs: [], interfaces: [], ports: [], runnables: [] },
-        timing: this.extractTiming(description),
-        communication: this.extractCommunication(description),
-        ecuBehavior: this.extractEcuBehavior(description)
-      };
-      
-      this.updateDerivedElements(req, description);
-      requirements.push(req);
+      const req = this.parseNaturalLanguageRequirement(description, i);
+      if (req) {
+        req.id = row[colMap.id] || req.id;
+        req.shortName = row[colMap.shortName] || req.shortName;
+        requirements.push(req);
+      }
     }
     
     return requirements;
@@ -166,177 +356,20 @@ export class RequirementParser {
     return map;
   }
 
-  private static isRequirementStart(text: string): boolean {
-    const patterns = [
-      /^(the\s+(?:system|ecu|swc)\s+shall|(?:system|ecu|swc)\s+must|requirement:|req\s*\d+)/i,
-      /^(functional|non-functional|interface|constraint|timing)/i,
-      /^\d+\.\s+/,
-      /^[a-z]\)\s+/i
-    ];
-    return patterns.some(pattern => pattern.test(text));
-  }
-
-  private static generateRequirementId(text: string, index: number): string {
-    const match = text.match(/REQ-\d+/i);
-    if (match) return match[0].toUpperCase();
-    
-    const numMatch = text.match(/^\d+/);
-    if (numMatch) return `REQ-${numMatch[0].padStart(3, '0')}`;
-    
-    return `REQ-${(index + 1).toString().padStart(3, '0')}`;
-  }
-
-  private static extractShortName(text: string): string {
-    const cleaned = text.replace(/^(?:REQ-\d+|(\d+\.|\d+\)|\*|\-|\•)\s*)/, '');
-    const words = cleaned.split(' ').slice(0, 4);
-    return words.join('_').replace(/[^a-zA-Z0-9_]/g, '').substring(0, 50) || 'Unnamed_Requirement';
-  }
-
-  private static cleanDescription(text: string): string {
-    return text.replace(/^(?:REQ-\d+|(\d+\.|\d+\)|\*|\-|\•)\s*)/, '').trim();
-  }
-
-  private static extractTiming(text: string): RequirementDocument['timing'] {
-    const timing: RequirementDocument['timing'] = {};
-    
-    // Extract periodic timing (e.g., "every 10ms", "each 100ms", "10ms period")
-    const periodicMatch = text.match(/(?:every|each|period(?:ic)?(?:ally)?)\s+(\d+)\s*(ms|millisecond|s|second)/i);
-    if (periodicMatch) {
-      timing.period = parseInt(periodicMatch[1]);
-      timing.unit = periodicMatch[2].startsWith('ms') || periodicMatch[2].startsWith('millisecond') ? 'ms' : 's';
-      timing.type = 'periodic';
-    }
-    
-    // Extract event-based timing
-    if (/(?:event|trigger|interrupt|on\s+change)/i.test(text)) {
-      timing.type = 'event';
-    }
-    
-    // Extract initialization
-    if (/(?:init|startup|begin|start)/i.test(text)) {
-      timing.type = 'init';
-    }
-    
-    return Object.keys(timing).length > 0 ? timing : undefined;
-  }
-
-  private static extractCommunication(text: string): RequirementDocument['communication'] {
-    const communication: RequirementDocument['communication'] = {};
-    
-    // Determine communication direction
-    const hasSend = /(?:send|transmit|provide|output|write)/i.test(text);
-    const hasReceive = /(?:receive|input|read|consume|get)/i.test(text);
-    
-    if (hasSend && hasReceive) {
-      communication.direction = 'both';
-    } else if (hasSend) {
-      communication.direction = 'sender';
-    } else if (hasReceive) {
-      communication.direction = 'receiver';
-    }
-    
-    // Extract data elements with types
-    const dataElements: Array<{ name: string; type: string; size?: number }> = [];
-    
-    // Pattern for data with types (e.g., "speed uint16", "temperature value uint8")
-    const dataTypeMatches = text.matchAll(/(\w+)\s+(?:data|signal|value|status)\s*(?:of\s+type\s+)?(\w+)/gi);
-    for (const match of dataTypeMatches) {
-      dataElements.push({
-        name: this.toPascalCase(match[1]),
-        type: this.mapDataType(match[2])
-      });
-    }
-    
-    // Pattern for generic data mentions
-    const dataMatches = text.matchAll(/(\w+)\s+(?:speed|temperature|pressure|position|angle|voltage|current)/gi);
-    for (const match of dataMatches) {
-      const name = this.toPascalCase(match[0]);
-      if (!dataElements.find(de => de.name === name)) {
-        dataElements.push({
-          name,
-          type: this.inferDataType(match[0])
-        });
-      }
-    }
-    
-    if (dataElements.length > 0) {
-      communication.dataElements = dataElements;
-    }
-    
-    return Object.keys(communication).length > 0 ? communication : undefined;
-  }
-
-  private static extractEcuBehavior(text: string): RequirementDocument['ecuBehavior'] {
-    const ecuBehavior: RequirementDocument['ecuBehavior'] = {};
-    
-    // Extract ECU name
-    const ecuMatch = text.match(/(?:ecu|electronic\s+control\s+unit)\s+(\w+)/i);
-    if (ecuMatch) {
-      ecuBehavior.ecuName = this.toPascalCase(ecuMatch[1]) + 'ECU';
-    }
-    
-    // Extract SWC instances
-    const swcMatches = text.matchAll(/(\w+)\s+(?:component|swc|software\s+component)/gi);
-    const swcInstances: string[] = [];
-    for (const match of swcMatches) {
-      const swcName = this.toPascalCase(match[1]);
-      if (!swcInstances.includes(swcName)) {
-        swcInstances.push(swcName);
-      }
-    }
-    
-    if (swcInstances.length > 0) {
-      ecuBehavior.swcInstances = swcInstances;
-    }
-    
-    return Object.keys(ecuBehavior).length > 0 ? ecuBehavior : undefined;
-  }
-
-  private static updateDerivedElements(req: Partial<RequirementDocument>, text: string) {
-    if (!req.derivedElements) return;
-    
-    // Extract SWC names
-    const swcPatterns = [
-      /(\w+)(?:\s+controller|\s+manager|\s+component|\s+swc)/gi,
-      /(?:the\s+)?(\w+)(?:\s+shall|\s+must|\s+will)/gi
-    ];
-    
-    for (const pattern of swcPatterns) {
-      let match;
-      while ((match = pattern.exec(text)) !== null) {
-        const swcName = this.toPascalCase(match[1]);
-        if (swcName.length > 2 && !req.derivedElements.swcs.includes(swcName)) {
-          req.derivedElements.swcs.push(swcName);
-        }
-      }
-    }
-    
-    // Extract interface names
-    const interfacePatterns = [
-      /(\w+)(?:\s+interface|\s+data|\s+signal)/gi,
-      /(?:interface|data|signal)\s+(\w+)/gi
-    ];
-    
-    for (const pattern of interfacePatterns) {
-      let match;
-      while ((match = pattern.exec(text)) !== null) {
-        const ifaceName = this.toPascalCase(match[1]) + 'Interface';
-        if (!req.derivedElements.interfaces.includes(ifaceName)) {
-          req.derivedElements.interfaces.push(ifaceName);
-        }
-      }
-    }
+  private static generateShortName(text: string): string {
+    const words = text.split(/\s+/).slice(0, 4);
+    return words.map(word => word.replace(/[^a-zA-Z0-9]/g, '')).join('_').substring(0, 50) || 'Requirement';
   }
 
   private static inferCategory(text: string): RequirementDocument['category'] {
     const lower = text.toLowerCase();
-    if (lower.includes('interface') || lower.includes('port') || lower.includes('signal') || lower.includes('communication')) {
+    if (lower.includes('interface') || lower.includes('communication') || lower.includes('signal')) {
       return 'INTERFACE';
     }
-    if (lower.includes('performance') || lower.includes('timing') || lower.includes('memory') || lower.includes('cpu')) {
+    if (lower.includes('timing') || lower.includes('performance') || lower.includes('memory')) {
       return 'NON_FUNCTIONAL';
     }
-    if (lower.includes('constraint') || lower.includes('limitation') || lower.includes('restriction')) {
+    if (lower.includes('constraint') || lower.includes('limitation')) {
       return 'CONSTRAINT';
     }
     return 'FUNCTIONAL';
@@ -347,70 +380,19 @@ export class RequirementParser {
     if (lower.includes('critical') || lower.includes('mandatory') || lower.includes('must')) {
       return 'HIGH';
     }
-    if (lower.includes('optional') || lower.includes('nice') || lower.includes('should')) {
+    if (lower.includes('optional') || lower.includes('should') || lower.includes('nice')) {
       return 'LOW';
     }
     return 'MEDIUM';
   }
 
-  private static mapCategory(value: string): RequirementDocument['category'] {
-    if (!value) return 'FUNCTIONAL';
-    const lower = value.toLowerCase();
-    if (lower.includes('non') || lower.includes('performance') || lower.includes('timing')) return 'NON_FUNCTIONAL';
-    if (lower.includes('interface') || lower.includes('communication')) return 'INTERFACE';
-    if (lower.includes('constraint') || lower.includes('limit')) return 'CONSTRAINT';
-    return 'FUNCTIONAL';
-  }
-
-  private static mapPriority(value: string): RequirementDocument['priority'] {
-    if (!value) return 'MEDIUM';
-    const lower = value.toLowerCase();
-    if (lower.includes('high') || lower.includes('critical') || lower.includes('mandatory')) return 'HIGH';
-    if (lower.includes('low') || lower.includes('optional')) return 'LOW';
-    return 'MEDIUM';
-  }
-
-  private static mapDataType(typeStr: string): string {
-    const lower = typeStr.toLowerCase();
-    if (lower.includes('bool')) return 'boolean';
-    if (lower.includes('uint8') || lower.includes('byte')) return 'uint8';
-    if (lower.includes('uint16') || lower.includes('word')) return 'uint16';
-    if (lower.includes('uint32') || lower.includes('dword')) return 'uint32';
-    if (lower.includes('sint8')) return 'sint8';
-    if (lower.includes('sint16')) return 'sint16';
-    if (lower.includes('sint32')) return 'sint32';
-    if (lower.includes('float') || lower.includes('real')) return 'float32';
-    return 'uint16'; // default
-  }
-
-  private static inferDataType(dataName: string): string {
-    const lower = dataName.toLowerCase();
-    if (lower.includes('flag') || lower.includes('enable') || lower.includes('active')) return 'boolean';
-    if (lower.includes('status') || lower.includes('state') || lower.includes('mode')) return 'uint8';
-    if (lower.includes('count') || lower.includes('index')) return 'uint16';
-    if (lower.includes('temperature') || lower.includes('pressure')) return 'sint16';
-    if (lower.includes('speed') || lower.includes('rpm') || lower.includes('frequency')) return 'uint16';
-    if (lower.includes('voltage') || lower.includes('current')) return 'float32';
-    return 'uint16'; // default
+  private static isCommonWord(word: string): boolean {
+    const commonWords = ['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'man', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'its', 'let', 'put', 'say', 'she', 'too', 'use'];
+    return commonWords.includes(word.toLowerCase());
   }
 
   private static toPascalCase(str: string): string {
     return str.replace(/(?:^|[^a-zA-Z0-9])([a-zA-Z])/g, (_, char) => char.toUpperCase())
               .replace(/[^a-zA-Z0-9]/g, '');
-  }
-
-  private static finalizeRequirement(req: Partial<RequirementDocument>): RequirementDocument {
-    return {
-      id: req.id || `REQ-${Date.now()}`,
-      shortName: req.shortName || 'UnnamedRequirement',
-      description: req.description || 'No description',
-      category: req.category || 'FUNCTIONAL',
-      priority: req.priority || 'MEDIUM',
-      source: req.source || 'IMPORTED',
-      derivedElements: req.derivedElements || { swcs: [], interfaces: [], ports: [], runnables: [] },
-      timing: req.timing,
-      communication: req.communication,
-      ecuBehavior: req.ecuBehavior
-    };
   }
 }
