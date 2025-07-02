@@ -1,4 +1,3 @@
-
 import * as XLSX from 'xlsx';
 
 export interface RequirementDocument {
@@ -6,10 +5,14 @@ export interface RequirementDocument {
   shortName: string;
   description: string;
   source: string;
+  category: 'FUNCTIONAL' | 'NON_FUNCTIONAL' | 'INTERFACE' | 'CONSTRAINT';
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
   derivedElements: {
     swcs: string[];
     interfaces: string[];
     signals: string[];
+    ports?: string[];
+    runnables?: string[];
   };
   communication?: {
     interfaceType: 'SenderReceiver' | 'ClientServer' | 'ModeSwitch' | 'Parameter' | 'Trigger';
@@ -21,7 +24,7 @@ export interface RequirementDocument {
     }>;
   };
   timing?: {
-    type: 'periodic' | 'event';
+    type: 'periodic' | 'event' | 'init';
     period?: number;
     unit?: 'ms' | 's';
   };
@@ -129,12 +132,32 @@ export class RequirementParser {
     if (swcs.length === 0 && interfaces.length === 0 && signals.length === 0) {
       return null;
     }
+
+    // Determine category based on content
+    let category: 'FUNCTIONAL' | 'NON_FUNCTIONAL' | 'INTERFACE' | 'CONSTRAINT' = 'FUNCTIONAL';
+    if (lowercaseLine.includes('interface') || lowercaseLine.includes('communication')) {
+      category = 'INTERFACE';
+    } else if (lowercaseLine.includes('timing') || lowercaseLine.includes('performance')) {
+      category = 'NON_FUNCTIONAL';
+    } else if (lowercaseLine.includes('shall not') || lowercaseLine.includes('must not')) {
+      category = 'CONSTRAINT';
+    }
+
+    // Determine priority based on content
+    let priority: 'HIGH' | 'MEDIUM' | 'LOW' = 'MEDIUM';
+    if (lowercaseLine.includes('critical') || lowercaseLine.includes('safety') || lowercaseLine.includes('emergency')) {
+      priority = 'HIGH';
+    } else if (lowercaseLine.includes('optional') || lowercaseLine.includes('nice to have')) {
+      priority = 'LOW';
+    }
     
     return {
       id,
       shortName: `Requirement ${id}`,
       description: line,
       source: 'parsed',
+      category,
+      priority,
       derivedElements: {
         swcs,
         interfaces,
@@ -343,6 +366,13 @@ export class RequirementParser {
     if (text.toLowerCase().includes('event') || text.toLowerCase().includes('trigger')) {
       return {
         type: 'event'
+      };
+    }
+
+    // Check for initialization
+    if (text.toLowerCase().includes('init') || text.toLowerCase().includes('startup')) {
+      return {
+        type: 'init'
       };
     }
     
