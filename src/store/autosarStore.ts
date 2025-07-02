@@ -707,27 +707,23 @@ ${content}
       <ELEMENTS>
         <APPLICATION-SW-COMPONENT-TYPE>
           <SHORT-NAME>${swc.name}</SHORT-NAME>
-          <CATEGORY>${swc.category.toUpperCase().replace('-', '_')}</CATEGORY>
-          <DESC>
-            <L-2 L="EN">${swc.description}</L-2>
-          </DESC>
           <PORTS>
 ${(swc.ports || []).map(port => {
   const portType = port.direction.toUpperCase() === 'PROVIDED' ? 'P' : 'R';
+  const interfaceType = port.direction.toUpperCase() === 'PROVIDED' ? 'PROVIDED-INTERFACE-TREF' : 'REQUIRED-INTERFACE-TREF';
   return `            <${portType}-PORT-PROTOTYPE>
               <SHORT-NAME>${port.name}</SHORT-NAME>
-              <PROVIDED-INTERFACE-TREF DEST="SENDER-RECEIVER-INTERFACE">/Interfaces/${port.interfaceRef}</PROVIDED-INTERFACE-TREF>
+              <${interfaceType} DEST="SENDER-RECEIVER-INTERFACE">/Interfaces/${port.interfaceRef}</${interfaceType}>
             </${portType}-PORT-PROTOTYPE>`;
 }).join('\n')}
           </PORTS>
           <INTERNAL-BEHAVIORS>
             <SWC-INTERNAL-BEHAVIOR>
-              <SHORT-NAME>${swc.name}_InternalBehavior</SHORT-NAME>
+              <SHORT-NAME>${swc.name}InternalBehavior</SHORT-NAME>
               <RUNNABLES>
 ${(swc.runnables || []).map(runnable => `                <RUNNABLE-ENTITY>
                   <SHORT-NAME>${runnable.name}</SHORT-NAME>
-                  <CATEGORY>${runnable.runnableType.toUpperCase()}</CATEGORY>
-                  <MINIMUM-START-INTERVAL>${runnable.period / 1000}</MINIMUM-START-INTERVAL>
+                  <MINIMUM-START-INTERVAL>${runnable.period > 0 ? runnable.period / 1000 : 0}</MINIMUM-START-INTERVAL>
                   <CAN-BE-INVOKED-CONCURRENTLY>${runnable.canBeInvokedConcurrently || false}</CAN-BE-INVOKED-CONCURRENTLY>
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').length > 0 ? `                  <DATA-RECEIVE-POINT-BY-ARGUMENTS>
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').map(ap => `                    <VARIABLE-ACCESS>
@@ -764,16 +760,16 @@ ${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').map(ap => `   
               </RUNNABLES>
               <EVENTS>
 ${(swc.runnables || []).map(runnable => {
-  if (runnable.runnableType === 'periodic') {
+  if (runnable.runnableType === 'periodic' && runnable.period > 0) {
     return `                <TIMING-EVENT>
-                  <SHORT-NAME>${runnable.name}_TimingEvent</SHORT-NAME>
-                  <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/ComponentTypes/${swc.name}/${swc.name}_InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
+                  <SHORT-NAME>${runnable.name}TimingEvent</SHORT-NAME>
+                  <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/ComponentTypes/${swc.name}/${swc.name}InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
                   <PERIOD>${runnable.period / 1000}</PERIOD>
                 </TIMING-EVENT>`;
   } else if (runnable.runnableType === 'init') {
     return `                <INIT-EVENT>
-                  <SHORT-NAME>${runnable.name}_InitEvent</SHORT-NAME>
-                  <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/ComponentTypes/${swc.name}/${swc.name}_InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
+                  <SHORT-NAME>${runnable.name}InitEvent</SHORT-NAME>
+                  <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/ComponentTypes/${swc.name}/${swc.name}InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
                 </INIT-EVENT>`;
   }
   return '';
