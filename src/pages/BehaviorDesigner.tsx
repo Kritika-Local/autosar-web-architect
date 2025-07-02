@@ -1,18 +1,13 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { 
   Plus, 
-  Search, 
   MoreVertical, 
   Box, 
-  Calendar, 
   Settings,
   Trash2,
   Copy,
@@ -43,6 +38,22 @@ const BehaviorDesigner = () => {
   const [deleteRunnableDialogOpen, setDeleteRunnableDialogOpen] = useState(false);
   const [runnableToDelete, setRunnableToDelete] = useState<string | null>(null);
   const [runnableToDeleteName, setRunnableToDeleteName] = useState<string | null>(null);
+
+  // Auto-select first SWC if available and none is selected
+  useEffect(() => {
+    if (currentProject?.swcs && currentProject.swcs.length > 0 && !selectedSWC) {
+      setSelectedSWC(currentProject.swcs[0]);
+    }
+  }, [currentProject?.swcs, selectedSWC]);
+
+  // Auto-select first runnable when SWC changes
+  useEffect(() => {
+    if (selectedSWC?.runnables && selectedSWC.runnables.length > 0) {
+      setSelectedRunnable(selectedSWC.runnables[0]);
+    } else {
+      setSelectedRunnable(null);
+    }
+  }, [selectedSWC]);
 
   const openEditAccessPointDialog = (accessPoint: any) => {
     setAccessPointToEdit(accessPoint);
@@ -96,6 +107,20 @@ const BehaviorDesigner = () => {
     });
   };
 
+  const handleSWCClick = (swc: any) => {
+    setSelectedSWC(swc);
+    // Auto-select first runnable when SWC is clicked
+    if (swc.runnables && swc.runnables.length > 0) {
+      setSelectedRunnable(swc.runnables[0]);
+    } else {
+      setSelectedRunnable(null);
+    }
+  };
+
+  const handleRunnableClick = (runnable: any) => {
+    setSelectedRunnable(runnable);
+  };
+
   if (!currentProject) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -127,63 +152,71 @@ const BehaviorDesigner = () => {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {currentProject.swcs.map((swc) => (
-              <Card 
-                key={swc.id} 
-                className={`autosar-card hover:shadow-xl transition-all duration-300 ${selectedSWC?.id === swc.id ? 'border-2 border-primary' : ''}`}
-                onClick={() => setSelectedSWC(swc)}
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 autosar-gradient rounded-lg flex items-center justify-center">
-                        <Box className="h-5 w-5 text-white" />
+          {currentProject.swcs && currentProject.swcs.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {currentProject.swcs.map((swc) => (
+                <Card 
+                  key={swc.id} 
+                  className={`autosar-card hover:shadow-xl transition-all duration-300 cursor-pointer ${selectedSWC?.id === swc.id ? 'border-2 border-primary' : ''}`}
+                  onClick={() => handleSWCClick(swc)}
+                >
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 autosar-gradient rounded-lg flex items-center justify-center">
+                          <Box className="h-5 w-5 text-white" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-lg">{swc.name}</CardTitle>
+                          <Badge variant="outline" className="mt-1">
+                            {swc.category}
+                          </Badge>
+                        </div>
                       </div>
-                      <div>
-                        <CardTitle className="text-lg">{swc.name}</CardTitle>
-                        <Badge variant="outline" className="mt-1">
-                          {swc.category}
-                        </Badge>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="sm">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem>
+                            <Copy className="h-4 w-4 mr-2" />
+                            Duplicate
+                          </DropdownMenuItem>
+                          <DropdownMenuItem>
+                            <Settings className="h-4 w-4 mr-2" />
+                            Settings
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <CardDescription className="mb-4">
+                      {swc.description || "No description provided"}
+                    </CardDescription>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Runnables:</span>
+                        <span className="font-medium">{swc.runnables?.length || 0}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Ports:</span>
+                        <span className="font-medium">{swc.ports?.length || 0}</span>
                       </div>
                     </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem>
-                          <Copy className="h-4 w-4 mr-2" />
-                          Duplicate
-                        </DropdownMenuItem>
-                        <DropdownMenuItem>
-                          <Settings className="h-4 w-4 mr-2" />
-                          Settings
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription className="mb-4">
-                    {swc.description || "No description provided"}
-                  </CardDescription>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Runnables:</span>
-                      <span className="font-medium">{swc.runnables?.length || 0}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Ports:</span>
-                      <span className="font-medium">{swc.ports?.length || 0}</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <Box className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No Software Components found</p>
+              <p className="text-sm">Import requirements or create SWCs manually to get started</p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -215,17 +248,20 @@ const BehaviorDesigner = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {selectedSWC.runnables.length > 0 ? (
+              {selectedSWC.runnables && selectedSWC.runnables.length > 0 ? (
                 selectedSWC.runnables.map((runnable) => (
                   <div 
                     key={runnable.id} 
-                    className={`flex items-center justify-between p-4 border rounded-lg ${selectedRunnable?.id === runnable.id ? 'bg-muted/50' : ''}`}
-                    onClick={() => setSelectedRunnable(runnable)}
+                    className={`flex items-center justify-between p-4 border rounded-lg cursor-pointer transition-colors ${selectedRunnable?.id === runnable.id ? 'bg-muted/50 border-primary' : 'hover:bg-muted/30'}`}
+                    onClick={() => handleRunnableClick(runnable)}
                   >
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
                         <h3 className="font-medium">{runnable.name}</h3>
                         <Badge variant="secondary">{runnable.runnableType}</Badge>
+                        {runnable.period > 0 && (
+                          <Badge variant="outline">{runnable.period}ms</Badge>
+                        )}
                       </div>
                       <p className="text-sm text-muted-foreground">
                         Access Points: {runnable.accessPoints?.length || 0}
@@ -259,7 +295,7 @@ const BehaviorDesigner = () => {
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   <Box className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No runnables defined</p>
+                  <p>No runnables defined for {selectedSWC.name}</p>
                   <p className="text-sm">Create runnables to define component behavior</p>
                 </div>
               )}
@@ -268,55 +304,65 @@ const BehaviorDesigner = () => {
         </Card>
       )}
       
+      {/* Access Points Section */}
       {selectedRunnable && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h4 className="font-medium">Access Points</h4>
-            <CreateAccessPointDialog 
-              runnableId={selectedRunnable.id} 
-              swcId={selectedSWC.id} 
-            />
-          </div>
-          
-          <div className="border rounded-lg">
-            <div className="grid grid-cols-4 gap-4 p-3 bg-muted font-medium text-sm">
-              <span>Name</span>
-              <span>Type</span>
-              <span>Access Mode</span>
-              <span>Actions</span>
+        <Card className="autosar-card">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Access Points - {selectedRunnable.name}</CardTitle>
+                <CardDescription>
+                  Data access points for runnable execution
+                </CardDescription>
+              </div>
+              <CreateAccessPointDialog 
+                runnableId={selectedRunnable.id} 
+                swcId={selectedSWC.id} 
+              />
             </div>
-            {selectedRunnable.accessPoints.length > 0 ? (
-              selectedRunnable.accessPoints.map((accessPoint) => (
-                <div key={accessPoint.id} className="grid grid-cols-4 gap-4 p-3 border-t">
-                  <span className="font-medium">{accessPoint.name}</span>
-                  <Badge variant="outline">{accessPoint.type}</Badge>
-                  <Badge variant="secondary">{accessPoint.access}</Badge>
-                  <div className="flex gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => openEditAccessPointDialog(accessPoint)}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => openDeleteAccessPointDialog(accessPoint.id, accessPoint.name)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+          </CardHeader>
+          <CardContent>
+            {selectedRunnable.accessPoints && selectedRunnable.accessPoints.length > 0 ? (
+              <div className="border rounded-lg">
+                <div className="grid grid-cols-4 gap-4 p-3 bg-muted font-medium text-sm">
+                  <span>Name</span>
+                  <span>Type</span>
+                  <span>Access Mode</span>
+                  <span>Actions</span>
                 </div>
-              ))
+                {selectedRunnable.accessPoints.map((accessPoint) => (
+                  <div key={accessPoint.id} className="grid grid-cols-4 gap-4 p-3 border-t">
+                    <span className="font-medium text-sm">{accessPoint.name}</span>
+                    <Badge variant="outline">{accessPoint.type}</Badge>
+                    <Badge variant="secondary">{accessPoint.access}</Badge>
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => openEditAccessPointDialog(accessPoint)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => openDeleteAccessPointDialog(accessPoint.id, accessPoint.name)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
-              <div className="p-8 text-center text-muted-foreground border-t">
-                <p>No access points defined</p>
+              <div className="text-center py-8 text-muted-foreground">
+                <Box className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No access points defined for {selectedRunnable.name}</p>
                 <p className="text-sm">Add access points to model runnable behavior</p>
               </div>
             )}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Dialogs */}

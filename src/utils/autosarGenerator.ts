@@ -72,14 +72,13 @@ export class AutosarGenerator {
                          swcName.endsWith('Controller') ? swcName : swcName + 'Controller';
       
       if (!artifacts.swcs.find(s => s.name === fullSwcName)) {
-        // Create SWC with empty runnables and ports arrays that will be populated later
         artifacts.swcs.push({
           name: fullSwcName,
           description: `Software component for ${swcName.replace('Controller', '').replace('_swc', '').toLowerCase()} functionality (Generated from ${req.id})`,
           category: this.inferSwcCategory(req.description),
           type: 'atomic',
-          runnables: [], // Initialize empty - will be populated by createRunnables
-          ports: [] // Initialize empty - will be populated by createPorts
+          runnables: [], // Will be populated by store integration
+          ports: [] // Will be populated by store integration
         });
         console.log(`Created SWC: ${fullSwcName}`);
       }
@@ -92,8 +91,6 @@ export class AutosarGenerator {
     );
     
     for (const swcName of swcs) {
-      const baseName = swcName.replace('_swc', '').replace('Controller', '');
-      
       // Create Init runnable
       const initRunnableName = `${swcName}_init`;
       if (!artifacts.runnables.find(r => r.name === initRunnableName && r.swcName === swcName)) {
@@ -103,7 +100,7 @@ export class AutosarGenerator {
           runnableType: 'init' as const,
           canBeInvokedConcurrently: false,
           swcName: swcName,
-          accessPoints: [], // Initialize empty - will be populated by createAccessPoints
+          accessPoints: [], // Will be populated by store integration
           events: []
         };
         artifacts.runnables.push(initRunnable);
@@ -135,7 +132,7 @@ export class AutosarGenerator {
           runnableType: runnableType,
           canBeInvokedConcurrently: false,
           swcName: swcName,
-          accessPoints: [], // Initialize empty - will be populated by createAccessPoints
+          accessPoints: [], // Will be populated by store integration
           events: []
         };
         artifacts.runnables.push(mainRunnable);
@@ -380,29 +377,23 @@ export class AutosarGenerator {
     return 'application';
   }
 
-  // Updated method to properly integrate artifacts into the store
+  // CRITICAL FIX: Properly integrate artifacts into the store with correct hierarchical structure
   static integrateArtifactsIntoStore(artifacts: AutosarArtifacts, store: any) {
     console.log('Integrating artifacts into store...');
     
-    // Create interfaces first (needed for port creation)
+    // Step 1: Create interfaces first (needed for port creation)
     for (const interfaceData of artifacts.interfaces) {
-      store.createInterface({
+      const interfaceId = store.createInterface({
         name: interfaceData.name,
         type: interfaceData.type,
         dataElements: interfaceData.dataElements
       });
-      
-      console.log(`Created Interface: ${interfaceData.name}`);
+      console.log(`Created Interface: ${interfaceData.name} with ID: ${interfaceId}`);
     }
     
-    // Create SWCs with proper runnable and port containment
+    // Step 2: Create SWCs and immediately populate them with runnables and ports
     for (const swcData of artifacts.swcs) {
-      // Get runnables for this SWC
-      const swcRunnables = artifacts.runnables.filter(r => r.swcName === swcData.name);
-      // Get ports for this SWC
-      const swcPorts = artifacts.ports.filter(p => p.swcName === swcData.name);
-      
-      // Create the SWC
+      // Create the SWC first
       const swcId = store.createSWC({
         name: swcData.name,
         description: swcData.description,
@@ -412,7 +403,8 @@ export class AutosarGenerator {
       
       console.log(`Created SWC: ${swcData.name} with ID: ${swcId}`);
       
-      // Create ports for this SWC
+      // Step 3: Create ports for this SWC
+      const swcPorts = artifacts.ports.filter(p => p.swcName === swcData.name);
       for (const portData of swcPorts) {
         const portId = store.createPort({
           name: portData.name,
@@ -420,11 +412,11 @@ export class AutosarGenerator {
           interfaceRef: portData.interfaceRef,
           swcId: swcId
         });
-        
         console.log(`Created Port: ${portData.name} for SWC: ${swcData.name}`);
       }
       
-      // Create runnables for this SWC
+      // Step 4: Create runnables for this SWC
+      const swcRunnables = artifacts.runnables.filter(r => r.swcName === swcData.name);
       for (const runnableData of swcRunnables) {
         const runnableId = store.createRunnable({
           name: runnableData.name,
@@ -437,13 +429,13 @@ export class AutosarGenerator {
         
         console.log(`Created Runnable: ${runnableData.name} with ID: ${runnableId} for SWC: ${swcData.name}`);
         
-        // Create access points for this runnable
+        // Step 5: Create access points for this runnable
         const runnableAccessPoints = artifacts.accessPoints.filter(ap => 
           ap.runnableName === runnableData.name && ap.swcName === swcData.name
         );
         
         for (const apData of runnableAccessPoints) {
-          store.addAccessPoint(runnableId, {
+          const accessPointId = store.addAccessPoint(runnableId, {
             name: apData.name,
             type: apData.type,
             access: apData.access,
@@ -456,6 +448,12 @@ export class AutosarGenerator {
           console.log(`Created Access Point: ${apData.name} for Runnable: ${runnableData.name}`);
         }
       }
+    }
+    
+    // Step 6: Create ECU Composition if available
+    if (artifacts.ecuComposition) {
+      // Note: This would need to be implemented in the store if ECU composition management is needed
+      console.log(`ECU Composition ready: ${artifacts.ecuComposition.name}`);
     }
     
     console.log('Artifacts integration completed successfully');
