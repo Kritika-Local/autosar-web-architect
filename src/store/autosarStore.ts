@@ -194,7 +194,7 @@ export const useAutosarStore = create<AutosarState>()(
       currentProject: null,
       autoSaveInterval: 60000,
       lastAutoSave: null,
-
+      
       createProject: (projectData: Omit<Project, 'id' | 'lastModified'>) => {
         const newProject: Project = {
           id: uuidv4(),
@@ -206,7 +206,7 @@ export const useAutosarStore = create<AutosarState>()(
           currentProject: newProject,
         }));
       },
-
+      
       loadProject: (projectId: string) => {
         const project = get().projects.find(p => p.id === projectId);
         if (project) {
@@ -215,7 +215,7 @@ export const useAutosarStore = create<AutosarState>()(
           console.error(`Project with ID ${projectId} not found.`);
         }
       },
-
+      
       saveProject: () => {
         const project = get().currentProject;
         if (project) {
@@ -227,7 +227,7 @@ export const useAutosarStore = create<AutosarState>()(
           console.log(`Project ${project.name} saved successfully.`);
         }
       },
-
+      
       saveProjectAsDraft: () => {
         const project = get().currentProject;
         if (project) {
@@ -238,15 +238,15 @@ export const useAutosarStore = create<AutosarState>()(
           }));
         }
       },
-
+      
       exportArxml: () => {
         get().exportMultipleArxml();
       },
-
+      
       importArxml: (file: File) => {
         console.log('Importing ARXML file:', file.name);
       },
-
+      
       autoSave: () => {
         const now = Date.now();
         const lastSave = get().lastAutoSave || 0;
@@ -260,14 +260,14 @@ export const useAutosarStore = create<AutosarState>()(
           console.log('Auto-save skipped (recent save).');
         }
       },
-
+      
       deleteProject: (projectId: string) => {
         set(state => ({
           projects: state.projects.filter(p => p.id !== projectId),
           currentProject: state.currentProject?.id === projectId ? null : state.currentProject,
         }));
       },
-
+      
       refreshProject: () => {
         const currentProject = get().currentProject;
         if (currentProject) {
@@ -281,7 +281,7 @@ export const useAutosarStore = create<AutosarState>()(
           console.log('Project data refreshed');
         }
       },
-
+      
       createSWC: (swcData: Omit<Swc, 'id'>) => {
         const newSwc: Swc = { id: uuidv4(), ...swcData };
         set(state => ({
@@ -291,7 +291,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       updateSWC: (swcId: string, updates: Partial<Swc>) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -302,7 +302,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       deleteSWC: (swcId: string) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -311,7 +311,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       createPort: (portData: Omit<Port, 'id'> & { swcId: string }) => {
         const { swcId, ...portDataWithoutSwcId } = portData;
         const newPort: Port = { id: uuidv4(), ...portDataWithoutSwcId };
@@ -324,7 +324,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       updatePort: (portId: string, updates: Partial<Port>) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -338,7 +338,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       deletePort: (portId: string) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -350,7 +350,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       createRunnable: (runnableData: Omit<Runnable, 'id'> & { swcId: string }) => {
         const { swcId, ...runnableDataWithoutSwcId } = runnableData;
         const newRunnable: Runnable = { id: uuidv4(), ...runnableDataWithoutSwcId };
@@ -363,7 +363,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       updateRunnable: (runnableId: string, updates: Partial<Runnable>) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -377,7 +377,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       deleteRunnable: (runnableId: string) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -389,7 +389,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       addAccessPoint: (runnableId: string, accessPointData: Omit<AccessPoint, 'id'>) => {
         const newAccessPoint: AccessPoint = { id: uuidv4(), ...accessPointData };
         set(state => ({
@@ -407,7 +407,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       updateAccessPoint: (accessPointId: string, updates: Partial<AccessPoint>) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -424,7 +424,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       deleteAccessPoint: (runnableId: string, accessPointId: string) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -441,11 +441,11 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       generateRteAccessPointName: (portName: string, dataElementName: string, accessType: string) => {
         return `Rte_${accessType}_${portName}_${dataElementName}`;
       },
-
+      
       createInterface: (interfaceData: Omit<Interface, 'id'>) => {
         const newInterface: Interface = { id: uuidv4(), ...interfaceData };
         set(state => ({
@@ -455,7 +455,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       updateInterface: (interfaceId: string, updates: Partial<Interface>) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -466,7 +466,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       deleteInterface: (interfaceId: string) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -475,7 +475,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       createDataElement: (dataElementData: Omit<DataElement, 'id'>) => {
         const newDataElement: DataElement = { id: uuidv4(), ...dataElementData };
         set(state => ({
@@ -485,7 +485,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       updateDataElement: (dataElementId: string, updates: Partial<DataElement>) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -502,7 +502,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       deleteDataElement: (dataElementId: string) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -515,7 +515,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       createDataType: (dataTypeData: Omit<DataType, 'id'>) => {
         const newDataType: DataType = { id: uuidv4(), ...dataTypeData };
         set(state => ({
@@ -525,7 +525,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       updateDataType: (dataTypeId: string, updates: Partial<DataType>) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -536,7 +536,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       deleteDataType: (dataTypeId: string) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -545,7 +545,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       createConnection: (connectionData: Omit<Connection, 'id'>) => {
         const newConnection: Connection = { id: uuidv4(), ...connectionData };
         set(state => ({
@@ -555,7 +555,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       updateConnection: (connectionId: string, updates: Partial<Connection>) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -566,7 +566,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       deleteConnection: (connectionId: string) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -575,7 +575,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       createECUComposition: (compositionData: Omit<ECUComposition, 'id' | 'swcInstances' | 'connectors'>) => {
         const newComposition: ECUComposition = { 
           id: uuidv4(), 
@@ -590,7 +590,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       updateECUComposition: (compositionId: string, updates: Partial<ECUComposition>) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -601,7 +601,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       deleteECUComposition: (compositionId: string) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -610,7 +610,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       addSWCInstance: (compositionId: string, instanceData: Omit<SWCInstance, 'id'>) => {
         const newInstance: SWCInstance = { id: uuidv4(), ...instanceData };
         set(state => ({
@@ -625,7 +625,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       removeSWCInstance: (compositionId: string, instanceId: string) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -639,7 +639,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       addECUConnector: (compositionId: string, connectorData: Omit<ECUConnector, 'id'>) => {
         const newConnector: ECUConnector = { id: uuidv4(), ...connectorData };
         set(state => ({
@@ -654,7 +654,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       removeECUConnector: (compositionId: string, connectorId: string) => {
         set(state => ({
           currentProject: state.currentProject ? {
@@ -668,7 +668,7 @@ export const useAutosarStore = create<AutosarState>()(
           } : state.currentProject
         }));
       },
-
+      
       exportMultipleArxml: () => {
         const state = get();
         if (!state.currentProject) return;
@@ -677,17 +677,17 @@ export const useAutosarStore = create<AutosarState>()(
         
         // AUTOSAR 4.2.2 compliant XML header
         const xmlHeader = `<?xml version="1.0" encoding="utf-8"?>
-    <!--This file was saved with a tool from Vector Informatik GmbH-->
-    <AUTOSAR xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_422.xsd"
-             xmlns="http://autosar.org/schema/r4.0"
-             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">`;
+<!--This file was saved with a tool from Vector Informatik GmbH-->
+<AUTOSAR xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_422.xsd"
+         xmlns="http://autosar.org/schema/r4.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">`;
     
         const createArxmlFile = (content: string, filename: string) => {
           const fullContent = `${xmlHeader}
-      <AR-PACKAGES>
-    ${content}
-      </AR-PACKAGES>
-    </AUTOSAR>`;
+  <AR-PACKAGES>
+${content}
+  </AR-PACKAGES>
+</AUTOSAR>`;
           
           const blob = new Blob([fullContent], { type: 'application/xml' });
           const url = URL.createObjectURL(blob);
@@ -699,14 +699,242 @@ export const useAutosarStore = create<AutosarState>()(
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
         };
-    
-        // Generate and download ARXML files
-        const packagesContent = `    <AR-PACKAGE>
-          <SHORT-NAME>ComponentTypes</SHORT-NAME>
-        </AR-PACKAGE>`;
+
+        // 1. Individual SWC files
+        project.swcs.forEach(swc => {
+          const swcContent = `    <AR-PACKAGE>
+      <SHORT-NAME>ComponentTypes</SHORT-NAME>
+      <ELEMENTS>
+        <APPLICATION-SW-COMPONENT-TYPE>
+          <SHORT-NAME>${swc.name}</SHORT-NAME>
+          <CATEGORY>${swc.category.toUpperCase().replace('-', '_')}</CATEGORY>
+          <DESC>
+            <L-2 L="EN">${swc.description}</L-2>
+          </DESC>
+          <PORTS>
+${(swc.ports || []).map(port => `            <${port.direction.toUpperCase()}-PORT-PROTOTYPE>
+              <SHORT-NAME>${port.name}</SHORT-NAME>
+              <${port.direction.toUpperCase()}-COM-SPEC>
+                <OPERATION-PROTOTYPE-REF DEST="CLIENT-SERVER-INTERFACE">/Interfaces/${port.interfaceRef}</OPERATION-PROTOTYPE-REF>
+              </${port.direction.toUpperCase()}-COM-SPEC>
+            </${port.direction.toUpperCase()}-PORT-PROTOTYPE>`).join('\n')}
+          </PORTS>
+          <INTERNAL-BEHAVIORS>
+            <SWC-INTERNAL-BEHAVIOR>
+              <SHORT-NAME>${swc.name}_InternalBehavior</SHORT-NAME>
+              <RUNNABLES>
+${(swc.runnables || []).map(runnable => `                <RUNNABLE-ENTITY>
+                  <SHORT-NAME>${runnable.name}</SHORT-NAME>
+                  <MINIMUM-START-INTERVAL>${runnable.period / 1000}</MINIMUM-START-INTERVAL>
+                  <CAN-BE-INVOKED-CONCURRENTLY>${runnable.canBeInvokedConcurrently || false}</CAN-BE-INVOKED-CONCURRENTLY>
+                  <DATA-RECEIVE-POINT-BY-ARGUMENTS>
+${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').map(ap => `                    <VARIABLE-ACCESS>
+                      <SHORT-NAME>${ap.name}</SHORT-NAME>
+                      <ACCESSED-VARIABLE>
+                        <AUTOSAR-VARIABLE-IREF>
+                          <PORT-PROTOTYPE-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/${swc.name}/${ap.portRef}</PORT-PROTOTYPE-REF>
+                          <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/Interfaces/${ap.portRef}/${ap.dataElementRef}</TARGET-DATA-PROTOTYPE-REF>
+                        </AUTOSAR-VARIABLE-IREF>
+                      </ACCESSED-VARIABLE>
+                    </VARIABLE-ACCESS>`).join('\n')}
+                  </DATA-RECEIVE-POINT-BY-ARGUMENTS>
+                  <DATA-SEND-POINTS>
+${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').map(ap => `                    <VARIABLE-ACCESS>
+                      <SHORT-NAME>${ap.name}</SHORT-NAME>
+                      <ACCESSED-VARIABLE>
+                        <AUTOSAR-VARIABLE-IREF>
+                          <PORT-PROTOTYPE-REF DEST="P-PORT-PROTOTYPE">/ComponentTypes/${swc.name}/${ap.portRef}</PORT-PROTOTYPE-REF>
+                          <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/Interfaces/${ap.portRef}/${ap.dataElementRef}</TARGET-DATA-PROTOTYPE-REF>
+                        </AUTOSAR-VARIABLE-IREF>
+                      </ACCESSED-VARIABLE>
+                    </VARIABLE-ACCESS>`).join('\n')}
+                  </DATA-SEND-POINTS>
+                </RUNNABLE-ENTITY>`).join('\n')}
+              </RUNNABLES>
+            </SWC-INTERNAL-BEHAVIOR>
+          </INTERNAL-BEHAVIORS>
+        </APPLICATION-SW-COMPONENT-TYPE>
+      </ELEMENTS>
+    </AR-PACKAGE>`;
+          
+          createArxmlFile(swcContent, `${swc.name}.arxml`);
+        });
+
+        // 2. Port Interfaces
+        const interfacesContent = `    <AR-PACKAGE>
+      <SHORT-NAME>Interfaces</SHORT-NAME>
+      <ELEMENTS>
+${project.interfaces.map(iface => `        <SENDER-RECEIVER-INTERFACE>
+          <SHORT-NAME>${iface.name}</SHORT-NAME>
+          <IS-SERVICE>false</IS-SERVICE>
+          <DATA-ELEMENTS>
+${iface.dataElements.map(de => `            <VARIABLE-DATA-PROTOTYPE>
+              <SHORT-NAME>${de.name}</SHORT-NAME>
+              <TYPE-TREF DEST="IMPLEMENTATION-DATA-TYPE">/DataTypes/${de.applicationDataTypeRef}</TYPE-TREF>
+            </VARIABLE-DATA-PROTOTYPE>`).join('\n')}
+          </DATA-ELEMENTS>
+        </SENDER-RECEIVER-INTERFACE>`).join('\n')}
+      </ELEMENTS>
+    </AR-PACKAGE>`;
         
-        createArxmlFile(packagesContent, 'packages.arxml');
-        console.log('Multiple ARXML files exported successfully');
+        createArxmlFile(interfacesContent, 'PortInterfaces.arxml');
+
+        // 3. Packages
+        const packagesContent = `    <AR-PACKAGE>
+      <SHORT-NAME>ComponentTypes</SHORT-NAME>
+      <DESC>
+        <L-2 L="EN">Package containing all software component types</L-2>
+      </DESC>
+    </AR-PACKAGE>
+    <AR-PACKAGE>
+      <SHORT-NAME>Interfaces</SHORT-NAME>
+      <DESC>
+        <L-2 L="EN">Package containing all port interfaces</L-2>
+      </DESC>
+    </AR-PACKAGE>
+    <AR-PACKAGE>
+      <SHORT-NAME>DataTypes</SHORT-NAME>
+      <DESC>
+        <L-2 L="EN">Package containing all data types</L-2>
+      </DESC>
+    </AR-PACKAGE>
+    <AR-PACKAGE>
+      <SHORT-NAME>Constants</SHORT-NAME>
+      <DESC>
+        <L-2 L="EN">Package containing all constants</L-2>
+      </DESC>
+    </AR-PACKAGE>`;
+        
+        createArxmlFile(packagesContent, 'Packages.arxml');
+
+        // 4. Data Types
+        const dataTypesContent = `    <AR-PACKAGE>
+      <SHORT-NAME>DataTypes</SHORT-NAME>
+      <ELEMENTS>
+${project.dataTypes.map(dt => `        <IMPLEMENTATION-DATA-TYPE>
+          <SHORT-NAME>${dt.name}</SHORT-NAME>
+          <CATEGORY>${dt.category.toUpperCase()}</CATEGORY>
+          <DESC>
+            <L-2 L="EN">${dt.description}</L-2>
+          </DESC>
+          <SW-DATA-DEF-PROPS>
+            <SW-DATA-DEF-PROPS-VARIANTS>
+              <SW-DATA-DEF-PROPS-CONDITIONAL>
+                <BASE-TYPE-REF DEST="SW-BASE-TYPE">/DataTypes/BaseTypes/${dt.baseType}</BASE-TYPE-REF>
+              </SW-DATA-DEF-PROPS-CONDITIONAL>
+            </SW-DATA-DEF-PROPS-VARIANTS>
+          </SW-DATA-DEF-PROPS>
+        </IMPLEMENTATION-DATA-TYPE>`).join('\n')}
+        <!-- Standard Base Types -->
+        <SW-BASE-TYPE>
+          <SHORT-NAME>uint8</SHORT-NAME>
+          <CATEGORY>FIXED_LENGTH</CATEGORY>
+          <BASE-TYPE-SIZE>8</BASE-TYPE-SIZE>
+        </SW-BASE-TYPE>
+        <SW-BASE-TYPE>
+          <SHORT-NAME>uint16</SHORT-NAME>
+          <CATEGORY>FIXED_LENGTH</CATEGORY>
+          <BASE-TYPE-SIZE>16</BASE-TYPE-SIZE>
+        </SW-BASE-TYPE>
+        <SW-BASE-TYPE>
+          <SHORT-NAME>uint32</SHORT-NAME>
+          <CATEGORY>FIXED_LENGTH</CATEGORY>
+          <BASE-TYPE-SIZE>32</BASE-TYPE-SIZE>
+        </SW-BASE-TYPE>
+      </ELEMENTS>
+    </AR-PACKAGE>`;
+        
+        createArxmlFile(dataTypesContent, 'DataTypes.arxml');
+
+        // 5. Constants
+        const constantsContent = `    <AR-PACKAGE>
+      <SHORT-NAME>Constants</SHORT-NAME>
+      <ELEMENTS>
+        <CONSTANT-SPECIFICATION>
+          <SHORT-NAME>DEFAULT_PERIOD</SHORT-NAME>
+          <VALUE>100</VALUE>
+        </CONSTANT-SPECIFICATION>
+        <CONSTANT-SPECIFICATION>
+          <SHORT-NAME>MAX_TIMEOUT</SHORT-NAME>
+          <VALUE>1000</VALUE>
+        </CONSTANT-SPECIFICATION>
+      </ELEMENTS>
+    </AR-PACKAGE>`;
+        
+        createArxmlFile(constantsContent, 'Constants.arxml');
+
+        // 6. ECU Composition
+        const ecuCompositionContent = `    <AR-PACKAGE>
+      <SHORT-NAME>ECUCompositions</SHORT-NAME>
+      <ELEMENTS>
+${(project.ecuCompositions || []).map(comp => `        <ECU-INSTANCE>
+          <SHORT-NAME>${comp.name}</SHORT-NAME>
+          <DESC>
+            <L-2 L="EN">${comp.description}</L-2>
+          </DESC>
+          <ECU-TYPE>${comp.ecuType}</ECU-TYPE>
+          <ASSOCIATED-COM-I-PDU-GROUP-REFS>
+${comp.swcInstances.map(inst => `            <SW-COMPONENT-INSTANCE>
+              <SHORT-NAME>${inst.name}</SHORT-NAME>
+              <TYPE-TREF DEST="APPLICATION-SW-COMPONENT-TYPE">/ComponentTypes/${inst.swcRef}</TYPE-TREF>
+            </SW-COMPONENT-INSTANCE>`).join('\n')}
+          </ASSOCIATED-COM-I-PDU-GROUP-REFS>
+          <CONNECTORS>
+${comp.connectors.map(conn => `            <ASSEMBLY-SW-CONNECTOR>
+              <SHORT-NAME>${conn.name}</SHORT-NAME>
+              <PROVIDER-IREF>
+                <CONTEXT-COMPONENT-REF DEST="SW-COMPONENT-PROTOTYPE">/ECUCompositions/${comp.name}/${conn.sourceInstanceId}</CONTEXT-COMPONENT-REF>
+                <TARGET-P-PORT-REF DEST="P-PORT-PROTOTYPE">/ComponentTypes/SWC/${conn.sourcePortId}</TARGET-P-PORT-REF>
+              </PROVIDER-IREF>
+              <REQUESTER-IREF>
+                <CONTEXT-COMPONENT-REF DEST="SW-COMPONENT-PROTOTYPE">/ECUCompositions/${comp.name}/${conn.targetInstanceId}</CONTEXT-COMPONENT-REF>
+                <TARGET-R-PORT-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/SWC/${conn.targetPortId}</TARGET-R-PORT-REF>
+              </REQUESTER-IREF>
+            </ASSEMBLY-SW-CONNECTOR>`).join('\n')}
+          </CONNECTORS>
+        </ECU-INSTANCE>`).join('\n')}
+      </ELEMENTS>
+    </AR-PACKAGE>`;
+        
+        createArxmlFile(ecuCompositionContent, 'ECUComposition.arxml');
+
+        // 7. System Extract
+        const systemExtractContent = `    <AR-PACKAGE>
+      <SHORT-NAME>System</SHORT-NAME>
+      <ELEMENTS>
+        <SYSTEM>
+          <SHORT-NAME>${project.name}_System</SHORT-NAME>
+          <DESC>
+            <L-2 L="EN">System extract for ${project.name}</L-2>
+          </DESC>
+          <MAPPINGS>
+${project.swcs.map(swc => `            <SWC-TO-ECU-MAPPING>
+              <SHORT-NAME>${swc.name}_Mapping</SHORT-NAME>
+              <ECU-INSTANCE-REF DEST="ECU-INSTANCE">/ECUCompositions/SystemECU</ECU-INSTANCE-REF>
+              <SW-COMPONENT-INSTANCE-REF DEST="SW-COMPONENT-INSTANCE">/ECUCompositions/SystemECU/${swc.name}Instance</SW-COMPONENT-INSTANCE-REF>
+            </SWC-TO-ECU-MAPPING>`).join('\n')}
+          </MAPPINGS>
+          <ROOT-SOFTWARE-COMPOSITIONS>
+            <ROOT-SW-COMPOSITION-PROTOTYPE>
+              <SHORT-NAME>RootComposition</SHORT-NAME>
+              <SOFTWARE-COMPOSITION-TREF DEST="COMPOSITION-SW-COMPONENT-TYPE">/ECUCompositions/SystemECU</SOFTWARE-COMPOSITION-TREF>
+            </ROOT-SW-COMPOSITION-PROTOTYPE>
+          </ROOT-SOFTWARE-COMPOSITIONS>
+        </SYSTEM>
+      </ELEMENTS>
+    </AR-PACKAGE>`;
+        
+        createArxmlFile(systemExtractContent, 'SystemExtract.arxml');
+
+        console.log('All 7 ARXML files exported successfully:', {
+          individualSWCs: project.swcs.length,
+          portInterfaces: 1,
+          packages: 1,
+          dataTypes: 1,
+          constants: 1,
+          ecuComposition: 1,
+          systemExtract: 1
+        });
       },
     }),
     {
