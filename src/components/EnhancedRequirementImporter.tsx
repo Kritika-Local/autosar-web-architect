@@ -16,7 +16,8 @@ import {
   Zap,
   Network,
   Clock,
-  Database
+  Database,
+  Play
 } from "lucide-react";
 import { useAutosarStore } from "@/store/autosarStore";
 import { RequirementParser, RequirementDocument } from "@/utils/requirementParser";
@@ -134,28 +135,41 @@ const EnhancedRequirementImporter = () => {
 
     setIsProcessing(true);
     try {
-      // Parse the text input into a requirement document
-      const parsedRequirement = RequirementParser.parseText(textInput, {
-        category: selectedCategory as any,
-        priority: selectedPriority as any
-      });
+      // Parse the text input into requirement documents - parseText returns an array
+      const parsedRequirements = RequirementParser.parseText(textInput);
 
-      console.log('Parsed requirement:', parsedRequirement);
+      console.log('Parsed requirements:', parsedRequirements);
+
+      if (parsedRequirements.length === 0) {
+        toast({
+          title: "No Requirements Found",
+          description: "Could not parse any requirements from the input text",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Update the parsed requirements with selected category and priority
+      const updatedRequirements = parsedRequirements.map(req => ({
+        ...req,
+        category: selectedCategory.toUpperCase() as RequirementDocument['category'],
+        priority: selectedPriority.toUpperCase() as RequirementDocument['priority']
+      }));
 
       // Generate AUTOSAR artifacts
-      const artifacts = AutosarGenerator.generateArtifacts([parsedRequirement]);
+      const artifacts = AutosarGenerator.generateArtifacts(updatedRequirements);
       
       console.log('Generated artifacts:', artifacts);
 
-      // Integrate artifacts into the store using the new method
+      // Integrate artifacts into the store
       AutosarGenerator.integrateArtifactsIntoStore(artifacts, store);
 
       // Update requirements state
-      setRequirements([parsedRequirement]);
+      setRequirements(updatedRequirements);
 
       toast({
         title: "Requirements Processed",
-        description: `Successfully processed requirement and generated ${artifacts.swcs.length} SWCs with ${artifacts.runnables.length} runnables`,
+        description: `Successfully processed ${updatedRequirements.length} requirement(s) and generated ${artifacts.swcs.length} SWCs with ${artifacts.runnables.length} runnables`,
       });
 
       // Clear input
@@ -173,7 +187,7 @@ const EnhancedRequirementImporter = () => {
     }
   };
 
-  const handleSampleLoad = async (sampleReq: any) => {
+  const handleSampleLoad = async (sampleReq: RequirementDocument) => {
     setIsProcessing(true);
     try {
       console.log('Loading sample requirement:', sampleReq);
@@ -183,7 +197,7 @@ const EnhancedRequirementImporter = () => {
       
       console.log('Generated artifacts from sample:', artifacts);
 
-      // Integrate artifacts into the store using the new method
+      // Integrate artifacts into the store
       AutosarGenerator.integrateArtifactsIntoStore(artifacts, store);
 
       // Update requirements state
@@ -228,7 +242,7 @@ const EnhancedRequirementImporter = () => {
       
       console.log('Generated artifacts from file:', artifacts);
 
-      // Integrate artifacts into the store using the new method
+      // Integrate artifacts into the store
       AutosarGenerator.integrateArtifactsIntoStore(artifacts, store);
 
       setRequirements(parsedRequirements);
