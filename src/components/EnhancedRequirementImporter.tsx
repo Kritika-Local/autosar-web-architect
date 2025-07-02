@@ -7,10 +7,11 @@ import { useToast } from "@/components/ui/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { useAutosarStore } from "@/store/autosarStore";
 import { RequirementParser, RequirementDocument } from "@/utils/requirementParser";
 import { AutosarGenerator } from "@/utils/autosarGenerator";
-import { FileText, Upload, Wand2, CheckCircle, AlertCircle, Play } from "lucide-react";
+import { FileText, Upload, Wand2, CheckCircle, AlertCircle, Play, Clock, Zap, Database, Settings } from "lucide-react";
 
 const EnhancedRequirementImporter = () => {
   const { toast } = useToast();
@@ -18,13 +19,20 @@ const EnhancedRequirementImporter = () => {
   
   const [requirements, setRequirements] = useState<RequirementDocument[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStep, setProcessingStep] = useState('');
+  const [processingProgress, setProcessingProgress] = useState(0);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [createNewProject, setCreateNewProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [validationResults, setValidationResults] = useState<{ [key: string]: boolean }>({});
+  const [showSampleData, setShowSampleData] = useState(false);
 
   const validateRequirement = useCallback((req: RequirementDocument): boolean => {
-    return !!(req.id && req.shortName && req.description && req.description.length > 10);
+    const hasBasicFields = !!(req.id && req.shortName && req.description && req.description.length > 10);
+    const hasValidCategory = ['FUNCTIONAL', 'NON_FUNCTIONAL', 'CONSTRAINT', 'INTERFACE'].includes(req.category);
+    const hasValidPriority = ['HIGH', 'MEDIUM', 'LOW'].includes(req.priority);
+    
+    return hasBasicFields && hasValidCategory && hasValidPriority;
   }, []);
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -44,37 +52,160 @@ const EnhancedRequirementImporter = () => {
     }
 
     setIsProcessing(true);
+    setProcessingStep('Reading file...');
+    setProcessingProgress(20);
+
     try {
-      const parsedRequirements = await RequirementParser.parseFile(file);
-      setRequirements(parsedRequirements);
+      setProcessingStep('Parsing requirements...');
+      setProcessingProgress(40);
       
-      // Validate requirements
+      const parsedRequirements = await RequirementParser.parseFile(file);
+      
+      setProcessingStep('Validating requirements...');
+      setProcessingProgress(70);
+      
+      // Enhanced validation
       const validation: { [key: string]: boolean } = {};
       for (const req of parsedRequirements) {
         validation[req.id] = validateRequirement(req);
       }
       setValidationResults(validation);
 
+      setProcessingStep('Finalizing...');
+      setProcessingProgress(100);
+      
+      setRequirements(parsedRequirements);
+
+      const validCount = Object.values(validation).filter(Boolean).length;
+      const totalCount = parsedRequirements.length;
+
       toast({
-        title: "File Processed",
-        description: `${parsedRequirements.length} requirements extracted from ${file.name}`,
+        title: "File Processed Successfully",
+        description: `${totalCount} requirements extracted, ${validCount} valid requirements found`,
       });
+
     } catch (error: any) {
       toast({
         title: "Processing Error",
-        description: error.message,
+        description: error.message || "Failed to process the file",
         variant: "destructive",
       });
     } finally {
       setIsProcessing(false);
+      setProcessingStep('');
+      setProcessingProgress(0);
     }
   }, [toast, validateRequirement]);
+
+  const loadSampleData = useCallback(() => {
+    const sampleRequirements: RequirementDocument[] = [
+      {
+        id: "REQ-001",
+        shortName: "Engine_Speed_Control",
+        description: "The Engine Controller shall read engine speed data every 10ms and provide speed information via CAN interface using uint16 data type.",
+        category: "FUNCTIONAL",
+        priority: "HIGH",
+        source: "SAMPLE",
+        derivedElements: {
+          swcs: ["EngineController"],
+          interfaces: ["EngineSpeedInterface"],
+          ports: ["SpeedDataPort"],
+          runnables: ["Engine_10ms"]
+        },
+        timing: {
+          period: 10,
+          unit: "ms",
+          type: "periodic"
+        },
+        communication: {
+          direction: "sender",
+          dataElements: [
+            { name: "EngineSpeed", type: "uint16" },
+            { name: "SpeedStatus", type: "uint8" }
+          ]
+        }
+      },
+      {
+        id: "REQ-002", 
+        shortName: "Brake_Pressure_Monitor",
+        description: "The Brake System SWC must receive brake pressure signals and trigger emergency response when pressure exceeds threshold.",
+        category: "INTERFACE",
+        priority: "HIGH",
+        source: "SAMPLE",
+        derivedElements: {
+          swcs: ["BrakeSystemController"],
+          interfaces: ["BrakePressureInterface"],
+          ports: ["PressureInputPort"],
+          runnables: ["BrakeSystem_Event"]
+        },
+        timing: {
+          type: "event"
+        },
+        communication: {
+          direction: "receiver",
+          dataElements: [
+            { name: "BrakePressure", type: "uint16" },
+            { name: "EmergencyFlag", type: "boolean" }
+          ]
+        }
+      },
+      {
+        id: "REQ-003",
+        shortName: "System_Initialize", 
+        description: "The System Controller shall initialize all subsystems during startup and perform self-diagnostics.",
+        category: "FUNCTIONAL",
+        priority: "MEDIUM",
+        source: "SAMPLE",
+        derivedElements: {
+          swcs: ["SystemController"],
+          interfaces: ["DiagnosticInterface"],
+          ports: ["DiagnosticOutputPort"],
+          runnables: ["System_Init"]
+        },
+        timing: {
+          type: "init"
+        },
+        communication: {
+          direction: "both",
+          dataElements: [
+            { name: "InitStatus", type: "uint8" },
+            { name: "DiagnosticCode", type: "uint32" }
+          ]
+        }
+      }
+    ];
+
+    setRequirements(sampleRequirements);
+    
+    // Validate sample requirements
+    const validation: { [key: string]: boolean } = {};
+    for (const req of sampleRequirements) {
+      validation[req.id] = validateRequirement(req);
+    }
+    setValidationResults(validation);
+    setShowSampleData(true);
+
+    toast({
+      title: "Sample Data Loaded",
+      description: `${sampleRequirements.length} sample requirements loaded successfully`,
+    });
+  }, [validateRequirement, toast]);
 
   const generateArtifacts = useCallback(async () => {
     if (requirements.length === 0) {
       toast({
         title: "No Requirements",
-        description: "Please import requirements first",
+        description: "Please import requirements first or load sample data",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const validRequirements = requirements.filter(req => validationResults[req.id]);
+    if (validRequirements.length === 0) {
+      toast({
+        title: "No Valid Requirements",
+        description: "Please ensure at least one requirement passes validation",
         variant: "destructive",
       });
       return;
@@ -96,7 +227,7 @@ const EnhancedRequirementImporter = () => {
 
         createProject({
           name: newProjectName,
-          description: `Project created from requirements - ${new Date().toLocaleDateString()}`,
+          description: `Project created from ${validRequirements.length} requirements - ${new Date().toLocaleDateString()}`,
           autosarVersion: "4.2.2",
           swcs: [],
           interfaces: [],
@@ -133,7 +264,13 @@ const EnhancedRequirementImporter = () => {
 
     try {
       setIsProcessing(true);
-      const artifacts = AutosarGenerator.generateArtifacts(requirements);
+      setProcessingStep('Analyzing requirements...');
+      setProcessingProgress(10);
+
+      const artifacts = AutosarGenerator.generateArtifacts(validRequirements);
+
+      setProcessingStep('Creating SWCs...');
+      setProcessingProgress(30);
 
       // Create SWCs
       for (const swc of artifacts.swcs) {
@@ -142,12 +279,18 @@ const EnhancedRequirementImporter = () => {
         }
       }
 
+      setProcessingStep('Creating interfaces...');
+      setProcessingProgress(50);
+
       // Create Interfaces
       for (const iface of artifacts.interfaces) {
         if (!targetProject.interfaces.find(i => i.name === iface.name)) {
           createInterface(iface);
         }
       }
+
+      setProcessingStep('Creating ports...');
+      setProcessingProgress(70);
 
       // Get updated project state
       const updatedProject = projects.find(p => p.id === targetProject.id) || targetProject;
@@ -160,6 +303,9 @@ const EnhancedRequirementImporter = () => {
         }
       }
 
+      setProcessingStep('Creating runnables...');
+      setProcessingProgress(85);
+
       // Create Runnables
       for (const runnable of artifacts.runnables) {
         const swc = updatedProject.swcs.find(s => s.name === runnable.swcName);
@@ -167,6 +313,9 @@ const EnhancedRequirementImporter = () => {
           createRunnable({ swcId: swc.id, ...runnable });
         }
       }
+
+      setProcessingStep('Creating access points...');
+      setProcessingProgress(95);
 
       // Create Access Points
       for (const ap of artifacts.accessPoints) {
@@ -181,9 +330,12 @@ const EnhancedRequirementImporter = () => {
         }
       }
 
+      setProcessingStep('Finalizing...');
+      setProcessingProgress(100);
+
       toast({
-        title: "Artifacts Generated",
-        description: `Successfully created ${artifacts.swcs.length} SWCs, ${artifacts.interfaces.length} interfaces, ${artifacts.ports.length} ports, and ${artifacts.runnables.length} runnables`,
+        title: "Artifacts Generated Successfully",
+        description: `Created ${artifacts.swcs.length} SWCs, ${artifacts.interfaces.length} interfaces, ${artifacts.ports.length} ports, and ${artifacts.runnables.length} runnables from ${validRequirements.length} requirements`,
       });
 
       // Clear form
@@ -192,6 +344,7 @@ const EnhancedRequirementImporter = () => {
       setSelectedProjectId('');
       setCreateNewProject(false);
       setNewProjectName('');
+      setShowSampleData(false);
 
     } catch (error: any) {
       toast({
@@ -201,8 +354,10 @@ const EnhancedRequirementImporter = () => {
       });
     } finally {
       setIsProcessing(false);
+      setProcessingStep('');
+      setProcessingProgress(0);
     }
-  }, [requirements, currentProject, createNewProject, newProjectName, selectedProjectId, projects, toast, createProject, loadProject, createSWC, createInterface, createPort, createRunnable, addAccessPoint]);
+  }, [requirements, validationResults, currentProject, createNewProject, newProjectName, selectedProjectId, projects, toast, createProject, loadProject, createSWC, createInterface, createPort, createRunnable, addAccessPoint]);
 
   const getCategoryColor = (category: RequirementDocument['category']) => {
     switch (category) {
@@ -223,6 +378,16 @@ const EnhancedRequirementImporter = () => {
     }
   };
 
+  const getTimingIcon = (timing: RequirementDocument['timing']) => {
+    if (!timing) return null;
+    switch (timing.type) {
+      case 'periodic': return <Clock className="h-4 w-4" />;
+      case 'event': return <Zap className="h-4 w-4" />;
+      case 'init': return <Play className="h-4 w-4" />;
+      default: return null;
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -232,7 +397,30 @@ const EnhancedRequirementImporter = () => {
             Import requirements from documents and generate AUTOSAR 4.2.2 compliant artifacts
           </p>
         </div>
+        <Button 
+          variant="outline" 
+          onClick={loadSampleData}
+          disabled={isProcessing}
+        >
+          <Database className="h-4 w-4 mr-2" />
+          Load Sample Data
+        </Button>
       </div>
+
+      {/* Progress indicator */}
+      {isProcessing && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">{processingStep}</span>
+                <span className="text-sm text-muted-foreground">{processingProgress}%</span>
+              </div>
+              <Progress value={processingProgress} className="w-full" />
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Project Selection */}
       <Card>
@@ -307,7 +495,7 @@ const EnhancedRequirementImporter = () => {
             Import Requirements Document
           </CardTitle>
           <CardDescription>
-            Supported formats: .txt, .doc, .docx, .xls, .xlsx
+            Supported formats: .txt, .doc, .docx, .xls, .xlsx | Natural language processing enabled
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -329,7 +517,7 @@ const EnhancedRequirementImporter = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
-              Imported Requirements ({requirements.length})
+              {showSampleData ? 'Sample Requirements' : 'Imported Requirements'} ({requirements.length})
             </CardTitle>
             <CardDescription>
               Review and validate requirements before generating AUTOSAR artifacts
@@ -340,6 +528,7 @@ const EnhancedRequirementImporter = () => {
               <TabsList>
                 <TabsTrigger value="list">Requirements List</TabsTrigger>
                 <TabsTrigger value="validation">Validation Report</TabsTrigger>
+                <TabsTrigger value="preview">Generation Preview</TabsTrigger>
               </TabsList>
 
               <TabsContent value="list" className="space-y-4">
@@ -363,9 +552,34 @@ const EnhancedRequirementImporter = () => {
                           <Badge className={getPriorityColor(req.priority)}>
                             {req.priority}
                           </Badge>
+                          {req.timing && (
+                            <Badge variant="outline" className="flex items-center gap-1">
+                              {getTimingIcon(req.timing)}
+                              {req.timing.type === 'periodic' ? `${req.timing.period}${req.timing.unit}` : req.timing.type}
+                            </Badge>
+                          )}
                         </div>
                       </div>
                       <p className="text-sm">{req.description}</p>
+                      
+                      {/* Enhanced information display */}
+                      {(req.communication || req.ecuBehavior || req.derivedElements) && (
+                        <div className="pt-2 border-t space-y-2">
+                          {req.communication && (
+                            <div className="text-xs text-muted-foreground">
+                              <span className="font-medium">Communication:</span> {req.communication.direction}
+                              {req.communication.dataElements && (
+                                <span> | Data: {req.communication.dataElements.map(de => `${de.name}(${de.type})`).join(', ')}</span>
+                              )}
+                            </div>
+                          )}
+                          {req.derivedElements && req.derivedElements.swcs.length > 0 && (
+                            <div className="text-xs text-muted-foreground">
+                              <span className="font-medium">Derived SWCs:</span> {req.derivedElements.swcs.join(', ')}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -405,6 +619,35 @@ const EnhancedRequirementImporter = () => {
                   </div>
                 )}
               </TabsContent>
+
+              <TabsContent value="preview" className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Preview of AUTOSAR artifacts to be generated from valid requirements:
+                </p>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="text-center p-4 border rounded-lg">
+                    <Settings className="h-8 w-8 mx-auto mb-2 text-blue-500" />
+                    <div className="font-semibold">SWCs</div>
+                    <div className="text-sm text-muted-foreground">Software Components</div>
+                  </div>
+                  <div className="text-center p-4 border rounded-lg">
+                    <Database className="h-8 w-8 mx-auto mb-2 text-green-500" />
+                    <div className="font-semibold">Interfaces</div>
+                    <div className="text-sm text-muted-foreground">Port Interfaces</div>
+                  </div>
+                  <div className="text-center p-4 border rounded-lg">
+                    <Zap className="h-8 w-8 mx-auto mb-2 text-yellow-500" />
+                    <div className="font-semibold">Runnables</div>
+                    <div className="text-sm text-muted-foreground">Executable Functions</div>
+                  </div>
+                  <div className="text-center p-4 border rounded-lg">
+                    <FileText className="h-8 w-8 mx-auto mb-2 text-purple-500" />
+                    <div className="font-semibold">Access Points</div>
+                    <div className="text-sm text-muted-foreground">RTE Access</div>
+                  </div>
+                </div>
+              </TabsContent>
             </Tabs>
 
             <div className="flex justify-end pt-4 border-t">
@@ -412,6 +655,7 @@ const EnhancedRequirementImporter = () => {
                 onClick={generateArtifacts} 
                 disabled={isProcessing || Object.values(validationResults).filter(Boolean).length === 0}
                 className="flex items-center gap-2"
+                size="lg"
               >
                 {isProcessing ? (
                   <>
