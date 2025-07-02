@@ -1,3 +1,4 @@
+
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import { persist } from 'zustand/middleware';
@@ -700,7 +701,7 @@ ${content}
           URL.revokeObjectURL(url);
         };
 
-        // 1. Individual SWC files
+        // 1. Individual SWC files with COMPLETE information (ports, runnables, access points)
         project.swcs.forEach(swc => {
           const swcContent = `    <AR-PACKAGE>
       <SHORT-NAME>ComponentTypes</SHORT-NAME>
@@ -712,12 +713,10 @@ ${content}
             <L-2 L="EN">${swc.description}</L-2>
           </DESC>
           <PORTS>
-${(swc.ports || []).map(port => `            <${port.direction.toUpperCase()}-PORT-PROTOTYPE>
+${(swc.ports || []).map(port => `            <${port.direction.toUpperCase() === 'PROVIDED' ? 'P' : 'R'}-PORT-PROTOTYPE>
               <SHORT-NAME>${port.name}</SHORT-NAME>
-              <${port.direction.toUpperCase()}-COM-SPEC>
-                <OPERATION-PROTOTYPE-REF DEST="CLIENT-SERVER-INTERFACE">/Interfaces/${port.interfaceRef}</OPERATION-PROTOTYPE-REF>
-              </${port.direction.toUpperCase()}-COM-SPEC>
-            </${port.direction.toUpperCase()}-PORT-PROTOTYPE>`).join('\n')}
+              <PROVIDED-INTERFACE-TREF DEST="SENDER-RECEIVER-INTERFACE">/Interfaces/${port.interfaceRef}</PROVIDED-INTERFACE-TREF>
+            </${port.direction.toUpperCase() === 'PROVIDED' ? 'P' : 'R'}-PORT-PROTOTYPE>`).join('\n')}
           </PORTS>
           <INTERNAL-BEHAVIORS>
             <SWC-INTERNAL-BEHAVIOR>
@@ -725,6 +724,7 @@ ${(swc.ports || []).map(port => `            <${port.direction.toUpperCase()}-PO
               <RUNNABLES>
 ${(swc.runnables || []).map(runnable => `                <RUNNABLE-ENTITY>
                   <SHORT-NAME>${runnable.name}</SHORT-NAME>
+                  <CATEGORY>${runnable.runnableType.toUpperCase()}</CATEGORY>
                   <MINIMUM-START-INTERVAL>${runnable.period / 1000}</MINIMUM-START-INTERVAL>
                   <CAN-BE-INVOKED-CONCURRENTLY>${runnable.canBeInvokedConcurrently || false}</CAN-BE-INVOKED-CONCURRENTLY>
                   <DATA-RECEIVE-POINT-BY-ARGUMENTS>
@@ -749,8 +749,34 @@ ${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').map(ap => `  
                       </ACCESSED-VARIABLE>
                     </VARIABLE-ACCESS>`).join('\n')}
                   </DATA-SEND-POINTS>
+                  <SERVER-CALL-POINTS>
+${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').map(ap => `                    <SYNCHRONOUS-SERVER-CALL-POINT>
+                      <SHORT-NAME>${ap.name}</SHORT-NAME>
+                      <OPERATION-IREF>
+                        <CONTEXT-R-PORT-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/${swc.name}/${ap.portRef}</CONTEXT-R-PORT-REF>
+                        <TARGET-REQUIRED-OPERATION-REF DEST="CLIENT-SERVER-OPERATION">/Interfaces/${ap.portRef}/${ap.dataElementRef}</TARGET-REQUIRED-OPERATION-REF>
+                      </OPERATION-IREF>
+                    </SYNCHRONOUS-SERVER-CALL-POINT>`).join('\n')}
+                  </SERVER-CALL-POINTS>
                 </RUNNABLE-ENTITY>`).join('\n')}
               </RUNNABLES>
+              <EVENTS>
+${(swc.runnables || []).map(runnable => {
+  if (runnable.runnableType === 'periodic') {
+    return `                <TIMING-EVENT>
+                  <SHORT-NAME>${runnable.name}_TimingEvent</SHORT-NAME>
+                  <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/ComponentTypes/${swc.name}/${swc.name}_InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
+                  <PERIOD>${runnable.period / 1000}</PERIOD>
+                </TIMING-EVENT>`;
+  } else if (runnable.runnableType === 'init') {
+    return `                <INIT-EVENT>
+                  <SHORT-NAME>${runnable.name}_InitEvent</SHORT-NAME>
+                  <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/ComponentTypes/${swc.name}/${swc.name}_InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
+                </INIT-EVENT>`;
+  }
+  return '';
+}).filter(event => event).join('\n')}
+              </EVENTS>
             </SWC-INTERNAL-BEHAVIOR>
           </INTERNAL-BEHAVIORS>
         </APPLICATION-SW-COMPONENT-TYPE>
