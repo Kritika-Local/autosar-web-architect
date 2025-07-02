@@ -28,7 +28,8 @@ const PortEditor = () => {
     deletePort, 
     deleteInterface,
     exportArxml,
-    exportMultipleArxml
+    exportMultipleArxml,
+    refreshProject
   } = useAutosarStore();
   
   const [deletePortDialogOpen, setDeletePortDialogOpen] = useState(false);
@@ -42,6 +43,16 @@ const PortEditor = () => {
   // Force refresh when currentProject changes
   useEffect(() => {
     setRefreshKey(prev => prev + 1);
+    
+    // Debug: Log SWC and runnable mapping
+    if (currentProject?.swcs) {
+      console.log('=== SWC Runnable Mapping Debug ===');
+      currentProject.swcs.forEach(swc => {
+        console.log(`SWC: ${swc.name}`);
+        console.log(`- Runnables (${swc.runnables?.length || 0}):`, swc.runnables?.map(r => r.name) || []);
+        console.log(`- Ports (${swc.ports?.length || 0}):`, swc.ports?.map(p => p.name) || []);
+      });
+    }
   }, [currentProject]);
 
   if (!currentProject) {
@@ -81,6 +92,12 @@ const PortEditor = () => {
 
   const handleRefresh = () => {
     setRefreshKey(prev => prev + 1);
+    
+    // Force refresh project data
+    if (refreshProject) {
+      refreshProject();
+    }
+    
     toast({
       title: "Refreshed",
       description: "Port and interface data has been refreshed",

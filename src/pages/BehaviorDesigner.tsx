@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,7 +25,7 @@ import CreateAccessPointDialog from "@/components/CreateAccessPointDialog";
 
 const BehaviorDesigner = () => {
   const { toast } = useToast();
-  const { currentProject, updateSWC, deleteRunnable, updateRunnable, deleteAccessPoint } = useAutosarStore();
+  const { currentProject, updateSWC, deleteRunnable, updateRunnable, deleteAccessPoint, refreshProject } = useAutosarStore();
   
   const [selectedSWC, setSelectedSWC] = useState<any>(null);
   const [selectedRunnable, setSelectedRunnable] = useState<any>(null);
@@ -43,6 +42,11 @@ const BehaviorDesigner = () => {
   useEffect(() => {
     if (currentProject?.swcs && currentProject.swcs.length > 0 && !selectedSWC) {
       setSelectedSWC(currentProject.swcs[0]);
+      
+      // Debug: Log the selected SWC structure
+      console.log('=== Auto-selecting SWC ===');
+      console.log('Selected SWC:', currentProject.swcs[0]);
+      console.log('SWC Runnables:', currentProject.swcs[0].runnables);
     }
   }, [currentProject?.swcs, selectedSWC]);
 
@@ -50,8 +54,10 @@ const BehaviorDesigner = () => {
   useEffect(() => {
     if (selectedSWC?.runnables && selectedSWC.runnables.length > 0) {
       setSelectedRunnable(selectedSWC.runnables[0]);
+      console.log('Auto-selected runnable:', selectedSWC.runnables[0]);
     } else {
       setSelectedRunnable(null);
+      console.log('No runnables found for SWC:', selectedSWC?.name);
     }
   }, [selectedSWC]);
 
@@ -109,11 +115,17 @@ const BehaviorDesigner = () => {
 
   const handleSWCClick = (swc: any) => {
     setSelectedSWC(swc);
+    console.log('=== SWC Clicked ===');
+    console.log('SWC:', swc.name);
+    console.log('Runnables:', swc.runnables);
+    
     // Auto-select first runnable when SWC is clicked
     if (swc.runnables && swc.runnables.length > 0) {
       setSelectedRunnable(swc.runnables[0]);
+      console.log('Auto-selected first runnable:', swc.runnables[0].name);
     } else {
       setSelectedRunnable(null);
+      console.log('No runnables to select for SWC:', swc.name);
     }
   };
 
@@ -139,6 +151,10 @@ const BehaviorDesigner = () => {
             Define internal behavior of Software Components
           </p>
         </div>
+        <Button variant="outline" onClick={() => refreshProject && refreshProject()}>
+          <Settings className="h-4 w-4 mr-2" />
+          Refresh Data
+        </Button>
       </div>
 
       {/* SWC Selection */}
@@ -220,7 +236,7 @@ const BehaviorDesigner = () => {
         </CardContent>
       </Card>
 
-      {/* Runnable Details */}
+      {/* Runnable Details - Enhanced Debug Info */}
       {selectedSWC && (
         <Card className="autosar-card">
           <CardHeader>
@@ -228,7 +244,7 @@ const BehaviorDesigner = () => {
               <div>
                 <CardTitle>Runnables - {selectedSWC.name}</CardTitle>
                 <CardDescription>
-                  Define the execution behavior of the selected SWC
+                  Define the execution behavior of the selected SWC ({selectedSWC.runnables?.length || 0} runnables found)
                 </CardDescription>
               </div>
               <DropdownMenu>
@@ -247,6 +263,14 @@ const BehaviorDesigner = () => {
             </div>
           </CardHeader>
           <CardContent>
+            {/* Debug info */}
+            <div className="mb-4 p-3 bg-muted rounded text-sm">
+              <p><strong>Debug:</strong> SWC "{selectedSWC.name}" has {selectedSWC.runnables?.length || 0} runnables</p>
+              {selectedSWC.runnables?.map((r, idx) => (
+                <p key={idx}>- {r.name} ({r.runnableType}, {r.period}ms)</p>
+              ))}
+            </div>
+            
             <div className="space-y-4">
               {selectedSWC.runnables && selectedSWC.runnables.length > 0 ? (
                 selectedSWC.runnables.map((runnable) => (
@@ -295,8 +319,20 @@ const BehaviorDesigner = () => {
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   <Box className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No runnables defined for {selectedSWC.name}</p>
-                  <p className="text-sm">Create runnables to define component behavior</p>
+                  <p>No runnables mapped to {selectedSWC.name}</p>
+                  <p className="text-sm">Runnables may need to be regenerated or remapped</p>
+                  <Button 
+                    variant="outline" 
+                    className="mt-4"
+                    onClick={() => {
+                      toast({
+                        title: "Debug Info",
+                        description: `SWC ${selectedSWC.name} has ${selectedSWC.runnables?.length || 0} runnables in memory`
+                      });
+                    }}
+                  >
+                    Debug Runnable Count
+                  </Button>
                 </div>
               )}
             </div>
