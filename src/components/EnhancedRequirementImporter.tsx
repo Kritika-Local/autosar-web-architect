@@ -61,7 +61,8 @@ const EnhancedRequirementImporter = () => {
         unit: "ms" as const
       },
       ecuBehavior: {
-        ecuName: "MainECU"
+        ecuName: "MainECU",
+        swcInstances: ["sensor_swc", "EMS_swc"]
       }
     },
     {
@@ -91,7 +92,8 @@ const EnhancedRequirementImporter = () => {
         unit: "ms" as const
       },
       ecuBehavior: {
-        ecuName: "BrakeECU"
+        ecuName: "BrakeECU",
+        swcInstances: ["BrakePedalSensor", "BrakeController"]
       }
     },
     {
@@ -121,7 +123,8 @@ const EnhancedRequirementImporter = () => {
         ]
       },
       ecuBehavior: {
-        ecuName: "EngineECU"
+        ecuName: "EngineECU",
+        swcInstances: ["EngineSpeedSensor", "TransmissionController"]
       }
     }
   ];
