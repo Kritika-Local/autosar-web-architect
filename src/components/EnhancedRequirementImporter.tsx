@@ -39,8 +39,8 @@ const EnhancedRequirementImporter = () => {
       shortName: "Temperature Sensor Communication",
       description: "The software component sensor_swc shall send a temperature value to the software component EMS_swc using a Sender-Receiver communication model, with a transmission period of 10 milliseconds.",
       source: "sample",
-      category: "functional" as const,
-      priority: "high" as const,
+      category: "FUNCTIONAL" as const,
+      priority: "HIGH" as const,
       derivedElements: {
         swcs: ["sensor_swc", "EMS_swc"],
         interfaces: ["sensor_EMS_portinterface"],
@@ -69,8 +69,8 @@ const EnhancedRequirementImporter = () => {
       shortName: "Brake Pedal Signal Processing",
       description: "The brake pedal sensor shall transmit brake status to the brake controller every 5ms using client-server interface.",
       source: "sample",
-      category: "safety" as const,
-      priority: "critical" as const,
+      category: "CONSTRAINT" as const,
+      priority: "HIGH" as const,
       derivedElements: {
         swcs: ["BrakePedalSensor", "BrakeController"],
         interfaces: ["BrakePedal_Interface"],
@@ -99,8 +99,8 @@ const EnhancedRequirementImporter = () => {
       shortName: "Engine RPM Monitoring", 
       description: "The engine speed sensor shall provide RPM data to multiple ECUs including transmission and dashboard display components.",
       source: "sample",
-      category: "diagnostic" as const,
-      priority: "medium" as const,
+      category: "NON_FUNCTIONAL" as const,
+      priority: "MEDIUM" as const,
       derivedElements: {
         swcs: ["EngineSpeedSensor", "TransmissionController"],
         interfaces: ["EngineRPM_Interface"],
