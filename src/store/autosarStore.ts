@@ -144,6 +144,7 @@ interface AutosarState {
   deleteProject: (projectId: string) => void;
   exportArxml: () => void;
   importArxml: (file: File) => void;
+  refreshProject: () => void;
 
   createSWC: (swcData: Omit<Swc, 'id'>) => void;
   updateSWC: (swcId: string, updates: Partial<Swc>) => void;
@@ -265,6 +266,20 @@ export const useAutosarStore = create<AutosarState>()(
           projects: state.projects.filter(p => p.id !== projectId),
           currentProject: state.currentProject?.id === projectId ? null : state.currentProject,
         }));
+      },
+
+      refreshProject: () => {
+        const currentProject = get().currentProject;
+        if (currentProject) {
+          // Force a re-render by updating the lastModified timestamp
+          set(state => ({
+            currentProject: state.currentProject ? {
+              ...state.currentProject,
+              lastModified: Date.now()
+            } : state.currentProject
+          }));
+          console.log('Project data refreshed');
+        }
       },
 
       createSWC: (swcData: Omit<Swc, 'id'>) => {
