@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import { persist } from 'zustand/middleware';
@@ -713,10 +712,13 @@ ${content}
             <L-2 L="EN">${swc.description}</L-2>
           </DESC>
           <PORTS>
-${(swc.ports || []).map(port => `            <${port.direction.toUpperCase() === 'PROVIDED' ? 'P' : 'R'}-PORT-PROTOTYPE>
+${(swc.ports || []).map(port => {
+  const portType = port.direction.toUpperCase() === 'PROVIDED' ? 'P' : 'R';
+  return `            <${portType}-PORT-PROTOTYPE>
               <SHORT-NAME>${port.name}</SHORT-NAME>
               <PROVIDED-INTERFACE-TREF DEST="SENDER-RECEIVER-INTERFACE">/Interfaces/${port.interfaceRef}</PROVIDED-INTERFACE-TREF>
-            </${port.direction.toUpperCase() === 'PROVIDED' ? 'P' : 'R'}-PORT-PROTOTYPE>`).join('\n')}
+            </${portType}-PORT-PROTOTYPE>`;
+}).join('\n')}
           </PORTS>
           <INTERNAL-BEHAVIORS>
             <SWC-INTERNAL-BEHAVIOR>
@@ -727,7 +729,7 @@ ${(swc.runnables || []).map(runnable => `                <RUNNABLE-ENTITY>
                   <CATEGORY>${runnable.runnableType.toUpperCase()}</CATEGORY>
                   <MINIMUM-START-INTERVAL>${runnable.period / 1000}</MINIMUM-START-INTERVAL>
                   <CAN-BE-INVOKED-CONCURRENTLY>${runnable.canBeInvokedConcurrently || false}</CAN-BE-INVOKED-CONCURRENTLY>
-                  <DATA-RECEIVE-POINT-BY-ARGUMENTS>
+${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').length > 0 ? `                  <DATA-RECEIVE-POINT-BY-ARGUMENTS>
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').map(ap => `                    <VARIABLE-ACCESS>
                       <SHORT-NAME>${ap.name}</SHORT-NAME>
                       <ACCESSED-VARIABLE>
@@ -737,8 +739,8 @@ ${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').map(ap => `   
                         </AUTOSAR-VARIABLE-IREF>
                       </ACCESSED-VARIABLE>
                     </VARIABLE-ACCESS>`).join('\n')}
-                  </DATA-RECEIVE-POINT-BY-ARGUMENTS>
-                  <DATA-SEND-POINTS>
+                  </DATA-RECEIVE-POINT-BY-ARGUMENTS>` : ''}
+${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').length > 0 ? `                  <DATA-SEND-POINTS>
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').map(ap => `                    <VARIABLE-ACCESS>
                       <SHORT-NAME>${ap.name}</SHORT-NAME>
                       <ACCESSED-VARIABLE>
@@ -748,8 +750,8 @@ ${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').map(ap => `  
                         </AUTOSAR-VARIABLE-IREF>
                       </ACCESSED-VARIABLE>
                     </VARIABLE-ACCESS>`).join('\n')}
-                  </DATA-SEND-POINTS>
-                  <SERVER-CALL-POINTS>
+                  </DATA-SEND-POINTS>` : ''}
+${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').length > 0 ? `                  <SERVER-CALL-POINTS>
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').map(ap => `                    <SYNCHRONOUS-SERVER-CALL-POINT>
                       <SHORT-NAME>${ap.name}</SHORT-NAME>
                       <OPERATION-IREF>
@@ -757,7 +759,7 @@ ${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').map(ap => `   
                         <TARGET-REQUIRED-OPERATION-REF DEST="CLIENT-SERVER-OPERATION">/Interfaces/${ap.portRef}/${ap.dataElementRef}</TARGET-REQUIRED-OPERATION-REF>
                       </OPERATION-IREF>
                     </SYNCHRONOUS-SERVER-CALL-POINT>`).join('\n')}
-                  </SERVER-CALL-POINTS>
+                  </SERVER-CALL-POINTS>` : ''}
                 </RUNNABLE-ENTITY>`).join('\n')}
               </RUNNABLES>
               <EVENTS>
