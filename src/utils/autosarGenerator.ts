@@ -103,7 +103,8 @@ export class AutosarGenerator {
           runnableType: 'init' as const,
           canBeInvokedConcurrently: false,
           swcName: swcName,
-          accessPoints: [] // Initialize empty - will be populated by createAccessPoints
+          accessPoints: [], // Initialize empty - will be populated by createAccessPoints
+          events: []
         };
         artifacts.runnables.push(initRunnable);
         console.log(`Created Init Runnable: ${initRunnableName} for SWC: ${swcName}`);
@@ -134,7 +135,8 @@ export class AutosarGenerator {
           runnableType: runnableType,
           canBeInvokedConcurrently: false,
           swcName: swcName,
-          accessPoints: [] // Initialize empty - will be populated by createAccessPoints
+          accessPoints: [], // Initialize empty - will be populated by createAccessPoints
+          events: []
         };
         artifacts.runnables.push(mainRunnable);
         console.log(`Created Main Runnable: ${mainRunnableName} (${runnableType}, ${period}ms) for SWC: ${swcName}`);
@@ -378,11 +380,22 @@ export class AutosarGenerator {
     return 'application';
   }
 
-  // New method to integrate artifacts into the store
+  // Updated method to properly integrate artifacts into the store
   static integrateArtifactsIntoStore(artifacts: AutosarArtifacts, store: any) {
     console.log('Integrating artifacts into store...');
     
-    // Create SWCs with their runnables and ports properly nested
+    // Create interfaces first (needed for port creation)
+    for (const interfaceData of artifacts.interfaces) {
+      store.createInterface({
+        name: interfaceData.name,
+        type: interfaceData.type,
+        dataElements: interfaceData.dataElements
+      });
+      
+      console.log(`Created Interface: ${interfaceData.name}`);
+    }
+    
+    // Create SWCs with proper runnable and port containment
     for (const swcData of artifacts.swcs) {
       // Get runnables for this SWC
       const swcRunnables = artifacts.runnables.filter(r => r.swcName === swcData.name);
@@ -399,6 +412,18 @@ export class AutosarGenerator {
       
       console.log(`Created SWC: ${swcData.name} with ID: ${swcId}`);
       
+      // Create ports for this SWC
+      for (const portData of swcPorts) {
+        const portId = store.createPort({
+          name: portData.name,
+          direction: portData.direction,
+          interfaceRef: portData.interfaceRef,
+          swcId: swcId
+        });
+        
+        console.log(`Created Port: ${portData.name} for SWC: ${swcData.name}`);
+      }
+      
       // Create runnables for this SWC
       for (const runnableData of swcRunnables) {
         const runnableId = store.createRunnable({
@@ -407,7 +432,7 @@ export class AutosarGenerator {
           runnableType: runnableData.runnableType,
           period: runnableData.period,
           canBeInvokedConcurrently: runnableData.canBeInvokedConcurrently || false,
-          events: []
+          events: runnableData.events || []
         });
         
         console.log(`Created Runnable: ${runnableData.name} with ID: ${runnableId} for SWC: ${swcData.name}`);
@@ -431,29 +456,6 @@ export class AutosarGenerator {
           console.log(`Created Access Point: ${apData.name} for Runnable: ${runnableData.name}`);
         }
       }
-      
-      // Create ports for this SWC
-      for (const portData of swcPorts) {
-        store.createPort({
-          name: portData.name,
-          direction: portData.direction,
-          interfaceRef: portData.interfaceRef,
-          swcId: swcId
-        });
-        
-        console.log(`Created Port: ${portData.name} for SWC: ${swcData.name}`);
-      }
-    }
-    
-    // Create interfaces
-    for (const interfaceData of artifacts.interfaces) {
-      store.createInterface({
-        name: interfaceData.name,
-        type: interfaceData.type,
-        dataElements: interfaceData.dataElements
-      });
-      
-      console.log(`Created Interface: ${interfaceData.name}`);
     }
     
     console.log('Artifacts integration completed successfully');
