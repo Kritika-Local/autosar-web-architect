@@ -58,7 +58,7 @@ export class AutosarGenerator {
     // Create Runnables (mapped to SWCs)
     this.createRunnables(req, artifacts);
     
-    // Create Ports
+    // Create Ports with proper P-Port/R-Port logic
     this.createPorts(req, artifacts);
     
     // Create Access Points (mapped to Runnables)
@@ -77,8 +77,8 @@ export class AutosarGenerator {
           description: `Software component for ${swcName.replace('Controller', '').replace('_swc', '').toLowerCase()} functionality (Generated from ${req.id})`,
           category: this.inferSwcCategory(req.description),
           type: 'atomic',
-          runnables: [], // Will be populated by store integration
-          ports: [] // Will be populated by store integration
+          runnables: [], // Will be populated during integration
+          ports: [] // Will be populated during integration
         });
         console.log(`Created SWC: ${fullSwcName}`);
       }
@@ -100,7 +100,7 @@ export class AutosarGenerator {
           runnableType: 'init' as const,
           canBeInvokedConcurrently: false,
           swcName: swcName,
-          accessPoints: [], // Will be populated by store integration
+          accessPoints: [], // Will be populated during integration
           events: []
         };
         artifacts.runnables.push(initRunnable);
@@ -132,7 +132,7 @@ export class AutosarGenerator {
           runnableType: runnableType,
           canBeInvokedConcurrently: false,
           swcName: swcName,
-          accessPoints: [], // Will be populated by store integration
+          accessPoints: [], // Will be populated during integration
           events: []
         };
         artifacts.runnables.push(mainRunnable);
@@ -218,69 +218,82 @@ export class AutosarGenerator {
     );
     const interfaces = req.derivedElements.interfaces;
     
-    if (swcs.length < 2 || interfaces.length === 0) {
-      // Handle single SWC case
-      if (swcs.length === 1 && interfaces.length > 0) {
-        const swcName = swcs[0];
-        const interfaceName = interfaces[0];
-        const communication = req.communication;
+    // CRITICAL FIX: Proper P-Port and R-Port generation based on communication direction
+    if (swcs.length >= 1 && interfaces.length > 0) {
+      const primaryInterface = interfaces[0];
+      const communication = req.communication;
 
-        if (communication?.direction === 'sender' || communication?.direction === 'both') {
-          const portName = `${swcName.replace('_swc', '').replace('Controller', '')}_ProvidedPort`;
-          if (!artifacts.ports.find(p => p.name === portName && p.swcName === swcName)) {
-            artifacts.ports.push({
-              name: portName,
-              direction: 'provided',
-              interfaceRef: interfaceName,
-              swcName: swcName
-            });
-            console.log(`Created Provided Port: ${portName} for SWC: ${swcName}`);
-          }
+      // Determine sender and receiver based on communication direction
+      let senderSwc: string | null = null;
+      let receiverSwc: string | null = null;
+
+      if (communication?.direction === 'sender' && swcs.length >= 1) {
+        senderSwc = swcs[0];
+        receiverSwc = swcs.length > 1 ? swcs[1] : null;
+      } else if (communication?.direction === 'receiver' && swcs.length >= 1) {
+        receiverSwc = swcs[0];
+        senderSwc = swcs.length > 1 ? swcs[1] : null;
+      } else if (communication?.direction === 'both' || swcs.length >= 2) {
+        // Default: first SWC is sender, second is receiver
+        senderSwc = swcs[0];
+        receiverSwc = swcs.length > 1 ? swcs[1] : null;
+      } else if (swcs.length === 1) {
+        // Single SWC case - create both ports
+        const swcName = swcs[0];
+        
+        // Create P-Port (Provided Port)
+        const providedPortName = `${swcName.replace('_swc', '').replace('Controller', '')}_PPort`;
+        if (!artifacts.ports.find(p => p.name === providedPortName && p.swcName === swcName)) {
+          artifacts.ports.push({
+            name: providedPortName,
+            direction: 'provided',
+            interfaceRef: primaryInterface,
+            swcName: swcName
+          });
+          console.log(`Created P-Port: ${providedPortName} for SWC: ${swcName}`);
         }
 
-        if (communication?.direction === 'receiver' || communication?.direction === 'both') {
-          const portName = `${swcName.replace('_swc', '').replace('Controller', '')}_RequiredPort`;
-          if (!artifacts.ports.find(p => p.name === portName && p.swcName === swcName)) {
-            artifacts.ports.push({
-              name: portName,
-              direction: 'required',
-              interfaceRef: interfaceName,
-              swcName: swcName
-            });
-            console.log(`Created Required Port: ${portName} for SWC: ${swcName}`);
-          }
+        // Create R-Port (Required Port)
+        const requiredPortName = `${swcName.replace('_swc', '').replace('Controller', '')}_RPort`;
+        if (!artifacts.ports.find(p => p.name === requiredPortName && p.swcName === swcName)) {
+          artifacts.ports.push({
+            name: requiredPortName,
+            direction: 'required',
+            interfaceRef: primaryInterface,
+            swcName: swcName
+          });
+          console.log(`Created R-Port: ${requiredPortName} for SWC: ${swcName}`);
+        }
+        return;
+      }
+
+      // Create P-Port for sender SWC
+      if (senderSwc) {
+        const providedPortName = `${senderSwc.replace('_swc', '').replace('Controller', '')}_PPort`;
+        if (!artifacts.ports.find(p => p.name === providedPortName && p.swcName === senderSwc)) {
+          artifacts.ports.push({
+            name: providedPortName,
+            direction: 'provided',
+            interfaceRef: primaryInterface,
+            swcName: senderSwc
+          });
+          console.log(`Created P-Port: ${providedPortName} for sender SWC: ${senderSwc}`);
         }
       }
-      return;
-    }
 
-    // Handle two SWC communication case
-    const senderSwc = swcs[0];
-    const receiverSwc = swcs[1];
-    const primaryInterface = interfaces[0];
-
-    // Create provided port for sender SWC
-    const providedPortName = `${senderSwc.replace('_swc', '').replace('Controller', '')}_ProvidedPort`;
-    if (!artifacts.ports.find(p => p.name === providedPortName && p.swcName === senderSwc)) {
-      artifacts.ports.push({
-        name: providedPortName,
-        direction: 'provided',
-        interfaceRef: primaryInterface,
-        swcName: senderSwc
-      });
-      console.log(`Created Provided Port: ${providedPortName} for SWC: ${senderSwc}`);
-    }
-
-    // Create required port for receiver SWC
-    const requiredPortName = `${receiverSwc.replace('_swc', '').replace('Controller', '')}_RequiredPort`;
-    if (!artifacts.ports.find(p => p.name === requiredPortName && p.swcName === receiverSwc)) {
-      artifacts.ports.push({
-        name: requiredPortName,
-        direction: 'required',
-        interfaceRef: primaryInterface,
-        swcName: receiverSwc
-      });
-      console.log(`Created Required Port: ${requiredPortName} for SWC: ${receiverSwc}`);
+      // Create R-Port for receiver SWC
+      if (receiverSwc) {
+        const requiredPortName = `${receiverSwc.replace('_swc', '').replace('Controller', '')}_RPort`;
+        if (!artifacts.ports.find(p => p.name === requiredPortName && p.swcName === receiverSwc)) {
+          artifacts.ports.push({
+            name: requiredPortName,
+            direction: 'required',
+            interfaceRef: primaryInterface,
+            swcName: receiverSwc
+          });
+          console.log(`Created R-Port: ${requiredPortName} for receiver SWC: ${receiverSwc}`);
+        }
+      }
     }
   }
 
@@ -382,16 +395,21 @@ export class AutosarGenerator {
     console.log('Integrating artifacts into store...');
     
     // Step 1: Create interfaces first (needed for port creation)
+    const interfaceMap = new Map<string, string>();
     for (const interfaceData of artifacts.interfaces) {
       const interfaceId = store.createInterface({
         name: interfaceData.name,
         type: interfaceData.type,
         dataElements: interfaceData.dataElements
       });
+      interfaceMap.set(interfaceData.name, interfaceId);
       console.log(`Created Interface: ${interfaceData.name} with ID: ${interfaceId}`);
     }
     
-    // Step 2: Create SWCs and immediately populate them with runnables and ports
+    // Step 2: Create SWCs and populate them with runnables and ports
+    const swcMap = new Map<string, string>();
+    const runnableMap = new Map<string, string>();
+    
     for (const swcData of artifacts.swcs) {
       // Create the SWC first
       const swcId = store.createSWC({
@@ -400,19 +418,22 @@ export class AutosarGenerator {
         category: swcData.category,
         type: swcData.type
       });
-      
+      swcMap.set(swcData.name, swcId);
       console.log(`Created SWC: ${swcData.name} with ID: ${swcId}`);
       
       // Step 3: Create ports for this SWC
       const swcPorts = artifacts.ports.filter(p => p.swcName === swcData.name);
       for (const portData of swcPorts) {
-        const portId = store.createPort({
-          name: portData.name,
-          direction: portData.direction,
-          interfaceRef: portData.interfaceRef,
-          swcId: swcId
-        });
-        console.log(`Created Port: ${portData.name} for SWC: ${swcData.name}`);
+        const interfaceId = interfaceMap.get(portData.interfaceRef);
+        if (interfaceId) {
+          const portId = store.createPort({
+            name: portData.name,
+            direction: portData.direction,
+            interfaceRef: interfaceId,
+            swcId: swcId
+          });
+          console.log(`Created Port: ${portData.name} for SWC: ${swcData.name}`);
+        }
       }
       
       // Step 4: Create runnables for this SWC
@@ -427,33 +448,55 @@ export class AutosarGenerator {
           events: runnableData.events || []
         });
         
+        runnableMap.set(`${swcData.name}::${runnableData.name}`, runnableId);
         console.log(`Created Runnable: ${runnableData.name} with ID: ${runnableId} for SWC: ${swcData.name}`);
+      }
+    }
+    
+    // Step 5: Create access points for runnables
+    for (const apData of artifacts.accessPoints) {
+      const swcId = swcMap.get(apData.swcName);
+      const runnableId = runnableMap.get(`${apData.swcName}::${apData.runnableName}`);
+      
+      if (swcId && runnableId) {
+        const accessPointId = store.addAccessPoint(runnableId, {
+          name: apData.name,
+          type: apData.type,
+          access: apData.access,
+          swcId: swcId,
+          runnableId: runnableId,
+          portRef: apData.portRef,
+          dataElementRef: apData.dataElementRef
+        });
         
-        // Step 5: Create access points for this runnable
-        const runnableAccessPoints = artifacts.accessPoints.filter(ap => 
-          ap.runnableName === runnableData.name && ap.swcName === swcData.name
-        );
-        
-        for (const apData of runnableAccessPoints) {
-          const accessPointId = store.addAccessPoint(runnableId, {
-            name: apData.name,
-            type: apData.type,
-            access: apData.access,
-            swcId: swcId,
-            runnableId: runnableId,
-            portRef: apData.portRef,
-            dataElementRef: apData.dataElementRef
-          });
-          
-          console.log(`Created Access Point: ${apData.name} for Runnable: ${runnableData.name}`);
-        }
+        console.log(`Created Access Point: ${apData.name} for Runnable: ${apData.runnableName}`);
       }
     }
     
     // Step 6: Create ECU Composition if available
     if (artifacts.ecuComposition) {
-      // Note: This would need to be implemented in the store if ECU composition management is needed
-      console.log(`ECU Composition ready: ${artifacts.ecuComposition.name}`);
+      const compositionId = store.createECUComposition({
+        name: artifacts.ecuComposition.name,
+        description: `Auto-generated ECU Composition`,
+        ecuType: 'ApplicationECU',
+        autosarVersion: '4.2.2'
+      });
+      
+      // Add SWC instances to the composition
+      for (const instance of artifacts.ecuComposition.swcInstances) {
+        const swcId = swcMap.get(instance.swcRef);
+        if (swcId) {
+          store.addSWCInstance(compositionId, {
+            name: instance.name,
+            swcRef: swcId,
+            instanceName: instance.name,
+            ecuCompositionId: compositionId
+          });
+          console.log(`Added SWC Instance: ${instance.name} to ECU Composition`);
+        }
+      }
+      
+      console.log(`Created ECU Composition: ${artifacts.ecuComposition.name} with ID: ${compositionId}`);
     }
     
     console.log('Artifacts integration completed successfully');
