@@ -1,398 +1,374 @@
 
-import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 
 export interface RequirementDocument {
   id: string;
   shortName: string;
   description: string;
-  category: 'FUNCTIONAL' | 'NON_FUNCTIONAL' | 'CONSTRAINT' | 'INTERFACE';
-  traceTo?: string[];
-  priority: 'HIGH' | 'MEDIUM' | 'LOW';
   source: string;
   derivedElements: {
     swcs: string[];
     interfaces: string[];
-    ports: string[];
-    runnables: string[];
-  };
-  timing?: {
-    period?: number;
-    unit?: 'ms' | 's';
-    type?: 'periodic' | 'event' | 'init';
+    signals: string[];
   };
   communication?: {
+    interfaceType: 'SenderReceiver' | 'ClientServer' | 'ModeSwitch' | 'Parameter' | 'Trigger';
     direction?: 'sender' | 'receiver' | 'both';
-    interfaceType?: 'SenderReceiver' | 'ClientServer';
-    dataElements?: Array<{
+    dataElements: Array<{
       name: string;
       type: string;
-      size?: number;
+      category?: string;
     }>;
   };
+  timing?: {
+    type: 'periodic' | 'event';
+    period?: number;
+    unit?: 'ms' | 's';
+  };
   ecuBehavior?: {
-    ecuName?: string;
-    swcInstances?: string[];
+    ecuName: string;
+    swcInstances: string[];
   };
 }
 
 export class RequirementParser {
   static async parseFile(file: File): Promise<RequirementDocument[]> {
-    const extension = file.name.split('.').pop()?.toLowerCase();
+    const extension = file.name.toLowerCase().split('.').pop();
     
-    switch (extension) {
-      case 'txt':
-        return this.parseTxtFile(file);
-      case 'doc':
-      case 'docx':
-        return this.parseDocxFile(file);
-      case 'xls':
-      case 'xlsx':
-        return this.parseExcelFile(file);
-      default:
-        throw new Error(`Unsupported file format: ${extension}`);
+    try {
+      switch (extension) {
+        case 'txt':
+          return this.parseTextFile(file);
+        case 'doc':
+        case 'docx':
+          return this.parseWordFile(file);
+        case 'xls':
+        case 'xlsx':
+          return this.parseExcelFile(file);
+        default:
+          throw new Error(`Unsupported file type: ${extension}`);
+      }
+    } catch (error) {
+      console.error(`Error parsing file ${file.name}:`, error);
+      throw new Error(`Failed to parse ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  private static async parseTxtFile(file: File): Promise<RequirementDocument[]> {
+  private static async parseTextFile(file: File): Promise<RequirementDocument[]> {
     const text = await file.text();
-    return this.extractRequirementsFromText(text);
+    return this.parseText(text);
   }
 
-  private static async parseDocxFile(file: File): Promise<RequirementDocument[]> {
-    const arrayBuffer = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer });
-    return this.extractRequirementsFromText(result.value);
+  private static async parseWordFile(file: File): Promise<RequirementDocument[]> {
+    // For now, we'll treat it as text. In a real implementation, you'd use a library like mammoth
+    try {
+      const text = await file.text();
+      return this.parseText(text);
+    } catch (error) {
+      console.warn('Word file parsing not fully implemented, treating as plain text');
+      const text = await file.text();
+      return this.parseText(text);
+    }
   }
 
   private static async parseExcelFile(file: File): Promise<RequirementDocument[]> {
     const arrayBuffer = await file.arrayBuffer();
     const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as string[][];
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
     
-    return this.extractRequirementsFromTable(data);
+    // Convert Excel data to text format
+    const textLines = jsonData
+      .map((row: any) => Array.isArray(row) ? row.join(' ') : String(row))
+      .filter((line: string) => line.trim().length > 0);
+    
+    const text = textLines.join('\n');
+    return this.parseText(text);
   }
 
-  private static extractRequirementsFromText(text: string): RequirementDocument[] {
+  static parseText(text: string): RequirementDocument[] {
+    const lines = text.split('\n').filter(line => line.trim().length > 0);
     const requirements: RequirementDocument[] = [];
-    const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim());
     
-    for (let i = 0; i < paragraphs.length; i++) {
-      const paragraph = paragraphs[i].trim();
-      if (paragraph.length < 20) continue; // Skip very short paragraphs
+    lines.forEach((line, index) => {
+      const trimmedLine = line.trim();
+      if (trimmedLine.length < 10) return; // Skip very short lines
       
-      const req = this.parseNaturalLanguageRequirement(paragraph, i + 1);
-      if (req) {
-        requirements.push(req);
+      const requirement = this.parseLine(trimmedLine, `REQ_${index + 1}`);
+      if (requirement) {
+        requirements.push(requirement);
       }
-    }
+    });
     
     return requirements;
   }
 
-  private static parseNaturalLanguageRequirement(text: string, index: number): RequirementDocument | null {
-    const cleanText = text.replace(/\s+/g, ' ').trim();
+  private static parseLine(line: string, id: string): RequirementDocument | null {
+    const lowercaseLine = line.toLowerCase();
     
-    // Extract SWCs - look for components, controllers, systems
-    const swcs = this.extractSwcNames(cleanText);
+    // Extract SWC names
+    const swcs = this.extractSwcs(line);
     
-    // Extract timing information
-    const timing = this.extractTimingInfo(cleanText);
+    // Extract interfaces
+    const interfaces = this.extractInterfaces(line);
+    
+    // Extract signals/data elements
+    const signals = this.extractSignals(line);
     
     // Extract communication info
-    const communication = this.extractCommunicationInfo(cleanText);
+    const communication = this.extractCommunication(line);
     
-    // Extract data elements
-    const dataElements = this.extractDataElements(cleanText);
+    // Extract timing info
+    const timing = this.extractTiming(line);
     
-    // Generate requirement ID
-    const id = `REQ-${index.toString().padStart(3, '0')}`;
+    // Extract ECU behavior
+    const ecuBehavior = this.extractEcuBehavior(line);
     
-    // Generate short name from first few words
-    const shortName = this.generateShortName(cleanText);
+    // Only create requirement if we found meaningful data
+    if (swcs.length === 0 && interfaces.length === 0 && signals.length === 0) {
+      return null;
+    }
     
     return {
       id,
-      shortName,
-      description: cleanText,
-      category: this.inferCategory(cleanText),
-      priority: this.inferPriority(cleanText),
-      source: 'IMPORTED',
+      shortName: `Requirement ${id}`,
+      description: line,
+      source: 'parsed',
       derivedElements: {
         swcs,
-        interfaces: this.generateInterfaceNames(swcs, communication),
-        ports: this.generatePortNames(swcs, communication),
-        runnables: this.generateRunnableNames(swcs, timing)
+        interfaces,
+        signals
       },
+      communication,
       timing,
-      communication: {
-        ...communication,
-        dataElements
-      }
+      ecuBehavior
     };
   }
 
-  private static extractSwcNames(text: string): string[] {
+  private static extractSwcs(text: string): string[] {
     const swcs: string[] = [];
-    const patterns = [
-      // Explicit mentions
-      /(\w+)(?:\s+(?:controller|component|swc|system|manager|module))/gi,
-      // The X shall/must/will patterns
-      /(?:the\s+)?(\w+)(?:\s+shall|\s+must|\s+will|\s+should)/gi,
-      // ECU patterns
-      /(\w+)(?:\s+ecu)/gi
+    const swcPatterns = [
+      /(\w+)Controller/gi,
+      /(\w+)\s+SWC/gi,
+      /SWC\s+(\w+)/gi,
+      /implement\s+(\w+)/gi,
+      /(\w+)\s+shall/gi
     ];
-
-    for (const pattern of patterns) {
-      let match;
-      while ((match = pattern.exec(text)) !== null) {
-        const name = this.toPascalCase(match[1]);
-        if (name.length > 2 && !this.isCommonWord(name) && !swcs.includes(name)) {
-          swcs.push(name);
+    
+    swcPatterns.forEach(pattern => {
+      const matches = text.matchAll(pattern);
+      for (const match of matches) {
+        if (match[1] && match[1].length > 2) {
+          const swcName = match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase();
+          if (!swcs.includes(swcName)) {
+            swcs.push(swcName);
+          }
         }
       }
-    }
-
-    // If no SWCs found, try to infer from context
-    if (swcs.length === 0) {
-      const words = text.split(/\s+/).slice(0, 10);
-      for (const word of words) {
-        const cleaned = word.replace(/[^a-zA-Z]/g, '');
-        if (cleaned.length > 3 && !this.isCommonWord(cleaned)) {
-          swcs.push(this.toPascalCase(cleaned));
-          break;
-        }
-      }
-    }
-
-    return swcs.length > 0 ? swcs : ['SystemController'];
+    });
+    
+    return swcs;
   }
 
-  private static extractTimingInfo(text: string): RequirementDocument['timing'] {
-    // Look for periodic timing
-    const periodicMatch = text.match(/(?:every|each|period(?:ic)?(?:ally)?)\s+(\d+)\s*(ms|millisecond|s|second)/i);
-    if (periodicMatch) {
+  private static extractInterfaces(text: string): string[] {
+    const interfaces: string[] = [];
+    const interfacePatterns = [
+      /(\w+)\s+interface/gi,
+      /via\s+(\w+)/gi,
+      /using\s+(\w+)\s+interface/gi,
+      /(\w+)Interface/gi
+    ];
+    
+    interfacePatterns.forEach(pattern => {
+      const matches = text.matchAll(pattern);
+      for (const match of matches) {
+        if (match[1] && match[1].length > 2 && !match[1].toLowerCase().includes('sender') && !match[1].toLowerCase().includes('receiver')) {
+          const interfaceName = match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase() + 'Interface';
+          if (!interfaces.includes(interfaceName)) {
+            interfaces.push(interfaceName);
+          }
+        }
+      }
+    });
+    
+    // Default interface if none found but communication is detected
+    if (interfaces.length === 0 && (text.toLowerCase().includes('send') || text.toLowerCase().includes('receive'))) {
+      interfaces.push('DefaultInterface');
+    }
+    
+    return interfaces;
+  }
+
+  private static extractSignals(text: string): string[] {
+    const signals: string[] = [];
+    const signalPatterns = [
+      /(\w+)\s+signal/gi,
+      /send\s+(\w+)/gi,
+      /receive\s+(\w+)/gi,
+      /(\w+)\s+data/gi
+    ];
+    
+    signalPatterns.forEach(pattern => {
+      const matches = text.matchAll(pattern);
+      for (const match of matches) {
+        if (match[1] && match[1].length > 2) {
+          const signalName = match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase();
+          if (!signals.includes(signalName)) {
+            signals.push(signalName);
+          }
+        }
+      }
+    });
+    
+    return signals;
+  }
+
+  private static extractCommunication(text: string): RequirementDocument['communication'] | undefined {
+    const lowercaseText = text.toLowerCase();
+    
+    let interfaceType: 'SenderReceiver' | 'ClientServer' | 'ModeSwitch' | 'Parameter' | 'Trigger' = 'SenderReceiver';
+    let direction: 'sender' | 'receiver' | 'both' | undefined;
+    
+    // Determine interface type
+    if (lowercaseText.includes('client') || lowercaseText.includes('server') || lowercaseText.includes('call')) {
+      interfaceType = 'ClientServer';
+    } else if (lowercaseText.includes('mode')) {
+      interfaceType = 'ModeSwitch';
+    } else if (lowercaseText.includes('parameter')) {
+      interfaceType = 'Parameter';
+    } else if (lowercaseText.includes('trigger')) {
+      interfaceType = 'Trigger';
+    }
+    
+    // Determine direction
+    if (lowercaseText.includes('send') && !lowercaseText.includes('receive')) {
+      direction = 'sender';
+    } else if (lowercaseText.includes('receive') && !lowercaseText.includes('send')) {
+      direction = 'receiver';
+    } else if (lowercaseText.includes('send') && lowercaseText.includes('receive')) {
+      direction = 'both';
+    }
+    
+    // Extract data elements
+    const dataElements = this.extractDataElements(text);
+    
+    if (direction || dataElements.length > 0) {
       return {
-        period: parseInt(periodicMatch[1]),
-        unit: periodicMatch[2].startsWith('ms') ? 'ms' : 's',
-        type: 'periodic'
+        interfaceType,
+        direction,
+        dataElements
       };
     }
-
-    // Look for event-based
-    if (/(?:event|trigger|interrupt|on\s+change|when)/i.test(text)) {
-      return { type: 'event' };
-    }
-
-    // Look for initialization
-    if (/(?:init|startup|begin|start|initialize)/i.test(text)) {
-      return { type: 'init' };
-    }
-
+    
     return undefined;
   }
 
-  private static extractCommunicationInfo(text: string): Partial<RequirementDocument['communication']> {
-    const comm: Partial<RequirementDocument['communication']> = {};
-
-    // Determine direction
-    const hasSend = /(?:send|transmit|provide|output|write|publish)/i.test(text);
-    const hasReceive = /(?:receive|input|read|consume|get|subscribe)/i.test(text);
-
-    if (hasSend && hasReceive) {
-      comm.direction = 'both';
-    } else if (hasSend) {
-      comm.direction = 'sender';
-    } else if (hasReceive) {
-      comm.direction = 'receiver';
-    }
-
-    // Determine interface type
-    if (/(?:call|invoke|request|response|client|server)/i.test(text)) {
-      comm.interfaceType = 'ClientServer';
-    } else {
-      comm.interfaceType = 'SenderReceiver';
-    }
-
-    return comm;
-  }
-
-  private static extractDataElements(text: string): Array<{ name: string; type: string; size?: number }> {
-    const dataElements: Array<{ name: string; type: string; size?: number }> = [];
+  private static extractDataElements(text: string): Array<{ name: string; type: string; category?: string }> {
+    const dataElements: Array<{ name: string; type: string; category?: string }> = [];
     
-    // Common automotive data patterns
-    const patterns = [
-      { pattern: /(\w*)?(?:speed|velocity)(?:\s+(\w+))?/gi, defaultType: 'uint16', baseName: 'Speed' },
-      { pattern: /(\w*)?(?:temperature|temp)(?:\s+(\w+))?/gi, defaultType: 'sint16', baseName: 'Temperature' },
-      { pattern: /(\w*)?(?:pressure)(?:\s+(\w+))?/gi, defaultType: 'uint16', baseName: 'Pressure' },
-      { pattern: /(\w*)?(?:status|state)(?:\s+(\w+))?/gi, defaultType: 'uint8', baseName: 'Status' },
-      { pattern: /(\w*)?(?:position|angle)(?:\s+(\w+))?/gi, defaultType: 'uint16', baseName: 'Position' },
-      { pattern: /(\w*)?(?:flag|enable|disable)(?:\s+(\w+))?/gi, defaultType: 'boolean', baseName: 'Flag' },
-      { pattern: /(\w*)?(?:voltage|volt)(?:\s+(\w+))?/gi, defaultType: 'float32', baseName: 'Voltage' },
-      { pattern: /(\w*)?(?:current|amp)(?:\s+(\w+))?/gi, defaultType: 'float32', baseName: 'Current' },
-      { pattern: /(\w*)?(?:signal|data)(?:\s+(\w+))?/gi, defaultType: 'uint32', baseName: 'Signal' }
+    // Pattern for type specifications like "uint16", "uint32", etc.
+    const typePatterns = [
+      /(\w+)\s+(?:shall be of type|type)\s+(uint\d+|int\d+|boolean|float|double)/gi,
+      /(\w+)\s*\(\s*(uint\d+|int\d+|boolean|float|double)\s*\)/gi,
+      /(uint\d+|int\d+|boolean|float|double)\s+(\w+)/gi
     ];
-
-    for (const { pattern, defaultType, baseName } of patterns) {
-      let match;
-      while ((match = pattern.exec(text)) !== null) {
-        const prefix = match[1] ? this.toPascalCase(match[1]) : '';
-        const suffix = match[2] ? this.toPascalCase(match[2]) : '';
-        const name = prefix + baseName + suffix || baseName;
+    
+    typePatterns.forEach(pattern => {
+      const matches = text.matchAll(pattern);
+      for (const match of matches) {
+        let name: string, type: string;
+        if (match[1] && match[2]) {
+          name = match[1];
+          type = match[2];
+        } else if (match[2] && match[1]) {
+          name = match[2];
+          type = match[1];
+        } else {
+          continue;
+        }
         
-        if (!dataElements.find(de => de.name === name)) {
-          dataElements.push({
-            name,
-            type: defaultType
-          });
+        if (name.length > 1 && type.length > 1) {
+          const elementName = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+          if (!dataElements.find(de => de.name === elementName)) {
+            dataElements.push({
+              name: elementName,
+              type: type.toLowerCase(),
+              category: 'VALUE'
+            });
+          }
         }
       }
-    }
-
-    // If no specific data found, create a generic one
+    });
+    
+    // If no specific data elements found, infer from signals
     if (dataElements.length === 0) {
-      dataElements.push({
-        name: 'DataElement',
-        type: 'uint32'
+      const signals = this.extractSignals(text);
+      signals.forEach(signal => {
+        dataElements.push({
+          name: signal,
+          type: 'uint32', // Default type
+          category: 'VALUE'
+        });
       });
     }
-
+    
     return dataElements;
   }
 
-  private static generateInterfaceNames(swcs: string[], communication?: Partial<RequirementDocument['communication']>): string[] {
-    const interfaces: string[] = [];
+  private static extractTiming(text: string): RequirementDocument['timing'] | undefined {
+    const timingPatterns = [
+      /every\s+(\d+)\s*(ms|milliseconds?)/gi,
+      /(\d+)\s*(ms|milliseconds?)\s+period/gi,
+      /period\s+of\s+(\d+)\s*(ms|milliseconds?)/gi,
+      /(\d+)\s*(s|seconds?)\s+period/gi,
+      /every\s+(\d+)\s*(s|seconds?)/gi
+    ];
     
-    for (const swc of swcs) {
-      const baseName = swc.replace(/Controller$/, '');
-      const interfaceName = baseName + 'Interface';
-      if (!interfaces.includes(interfaceName)) {
-        interfaces.push(interfaceName);
-      }
-    }
-
-    return interfaces.length > 0 ? interfaces : ['DataInterface'];
-  }
-
-  private static generatePortNames(swcs: string[], communication?: Partial<RequirementDocument['communication']>): string[] {
-    const ports: string[] = [];
-    
-    for (const swc of swcs) {
-      const baseName = swc.replace(/Controller$/, '');
-      
-      if (communication?.direction === 'sender' || communication?.direction === 'both') {
-        ports.push(baseName + 'OutputPort');
-      }
-      if (communication?.direction === 'receiver' || communication?.direction === 'both') {
-        ports.push(baseName + 'InputPort');
-      }
-      if (!communication?.direction) {
-        ports.push(baseName + 'Port');
-      }
-    }
-
-    return ports;
-  }
-
-  private static generateRunnableNames(swcs: string[], timing?: RequirementDocument['timing']): string[] {
-    const runnables: string[] = [];
-    
-    for (const swc of swcs) {
-      const baseName = swc.replace(/Controller$/, '');
-      
-      // Always add init runnable
-      runnables.push(baseName + '_Init');
-      
-      // Add timing-based runnable
-      if (timing?.type === 'periodic' && timing.period) {
-        runnables.push(`${baseName}_${timing.period}${timing.unit || 'ms'}`);
-      } else if (timing?.type === 'event') {
-        runnables.push(baseName + '_Event');
-      } else {
-        runnables.push(baseName + '_Main');
-      }
-    }
-
-    return runnables;
-  }
-
-  private static extractRequirementsFromTable(data: string[][]): RequirementDocument[] {
-    const requirements: RequirementDocument[] = [];
-    const headers = data[0] || [];
-    
-    const colMap = this.mapTableColumns(headers);
-    
-    for (let i = 1; i < data.length; i++) {
-      const row = data[i];
-      if (!row || row.length === 0) continue;
-      
-      const description = row[colMap.description] || row[2] || '';
-      if (description.length < 10) continue;
-      
-      const req = this.parseNaturalLanguageRequirement(description, i);
-      if (req) {
-        req.id = row[colMap.id] || req.id;
-        req.shortName = row[colMap.shortName] || req.shortName;
-        requirements.push(req);
+    for (const pattern of timingPatterns) {
+      const match = pattern.exec(text);
+      if (match) {
+        const period = parseInt(match[1]);
+        const unit = match[2].startsWith('s') ? 's' : 'ms';
+        
+        return {
+          type: 'periodic',
+          period,
+          unit: unit as 'ms' | 's'
+        };
       }
     }
     
-    return requirements;
-  }
-
-  private static mapTableColumns(headers: string[]) {
-    const map = { id: 0, shortName: 1, description: 2, category: 3, priority: 4 };
+    // Check for event-driven
+    if (text.toLowerCase().includes('event') || text.toLowerCase().includes('trigger')) {
+      return {
+        type: 'event'
+      };
+    }
     
-    headers.forEach((header, index) => {
-      const lower = header.toLowerCase();
-      if (lower.includes('id') || lower.includes('req')) map.id = index;
-      else if (lower.includes('name') || lower.includes('title')) map.shortName = index;
-      else if (lower.includes('desc') || lower.includes('text')) map.description = index;
-      else if (lower.includes('cat') || lower.includes('type')) map.category = index;
-      else if (lower.includes('prior') || lower.includes('crit')) map.priority = index;
-    });
+    return undefined;
+  }
+
+  private static extractEcuBehavior(text: string): RequirementDocument['ecuBehavior'] | undefined {
+    const ecuPatterns = [
+      /ECU\s+(\w+)/gi,
+      /(\w+)\s+ECU/gi,
+      /(\w+)(?:ControlUnit|Controller)/gi
+    ];
     
-    return map;
-  }
-
-  private static generateShortName(text: string): string {
-    const words = text.split(/\s+/).slice(0, 4);
-    return words.map(word => word.replace(/[^a-zA-Z0-9]/g, '')).join('_').substring(0, 50) || 'Requirement';
-  }
-
-  private static inferCategory(text: string): RequirementDocument['category'] {
-    const lower = text.toLowerCase();
-    if (lower.includes('interface') || lower.includes('communication') || lower.includes('signal')) {
-      return 'INTERFACE';
+    for (const pattern of ecuPatterns) {
+      const match = pattern.exec(text);
+      if (match && match[1]) {
+        const ecuName = match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase();
+        const swcInstances = this.extractSwcs(text);
+        
+        return {
+          ecuName,
+          swcInstances
+        };
+      }
     }
-    if (lower.includes('timing') || lower.includes('performance') || lower.includes('memory')) {
-      return 'NON_FUNCTIONAL';
-    }
-    if (lower.includes('constraint') || lower.includes('limitation')) {
-      return 'CONSTRAINT';
-    }
-    return 'FUNCTIONAL';
-  }
-
-  private static inferPriority(text: string): RequirementDocument['priority'] {
-    const lower = text.toLowerCase();
-    if (lower.includes('critical') || lower.includes('mandatory') || lower.includes('must')) {
-      return 'HIGH';
-    }
-    if (lower.includes('optional') || lower.includes('should') || lower.includes('nice')) {
-      return 'LOW';
-    }
-    return 'MEDIUM';
-  }
-
-  private static isCommonWord(word: string): boolean {
-    const commonWords = ['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'man', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'its', 'let', 'put', 'say', 'she', 'too', 'use'];
-    return commonWords.includes(word.toLowerCase());
-  }
-
-  private static toPascalCase(str: string): string {
-    return str.replace(/(?:^|[^a-zA-Z0-9])([a-zA-Z])/g, (_, char) => char.toUpperCase())
-              .replace(/[^a-zA-Z0-9]/g, '');
+    
+    return undefined;
   }
 }
