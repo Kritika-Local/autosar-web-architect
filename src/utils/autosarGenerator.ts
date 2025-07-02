@@ -218,80 +218,61 @@ export class AutosarGenerator {
     );
     const interfaces = req.derivedElements.interfaces;
     
-    // CRITICAL FIX: Proper P-Port and R-Port generation based on communication direction
     if (swcs.length >= 1 && interfaces.length > 0) {
       const primaryInterface = interfaces[0];
-      const communication = req.communication;
-
-      // Determine sender and receiver based on communication direction
-      let senderSwc: string | null = null;
-      let receiverSwc: string | null = null;
-
-      if (communication?.direction === 'sender' && swcs.length >= 1) {
-        senderSwc = swcs[0];
-        receiverSwc = swcs.length > 1 ? swcs[1] : null;
-      } else if (communication?.direction === 'receiver' && swcs.length >= 1) {
-        receiverSwc = swcs[0];
-        senderSwc = swcs.length > 1 ? swcs[1] : null;
-      } else if (communication?.direction === 'both' || swcs.length >= 2) {
-        // Default: first SWC is sender, second is receiver
-        senderSwc = swcs[0];
-        receiverSwc = swcs.length > 1 ? swcs[1] : null;
-      } else if (swcs.length === 1) {
-        // Single SWC case - create both ports
-        const swcName = swcs[0];
+      
+      for (const swcName of swcs) {
+        // FIXED: Proper P-Port/R-Port logic based on SWC type
+        let shouldCreatePPort = false;
+        let shouldCreateRPort = false;
         
-        // Create P-Port (Provided Port)
-        const providedPortName = `${swcName.replace('_swc', '').replace('Controller', '')}_PPort`;
-        if (!artifacts.ports.find(p => p.name === providedPortName && p.swcName === swcName)) {
-          artifacts.ports.push({
-            name: providedPortName,
-            direction: 'provided',
-            interfaceRef: primaryInterface,
-            swcName: swcName
-          });
-          console.log(`Created P-Port: ${providedPortName} for SWC: ${swcName}`);
+        // Sensor SWCs create P-Ports (they provide data)
+        if (swcName.toLowerCase().includes('sensor')) {
+          shouldCreatePPort = true;
+          console.log(`${swcName} is a sensor - creating P-Port (provider)`);
         }
-
-        // Create R-Port (Required Port)
-        const requiredPortName = `${swcName.replace('_swc', '').replace('Controller', '')}_RPort`;
-        if (!artifacts.ports.find(p => p.name === requiredPortName && p.swcName === swcName)) {
-          artifacts.ports.push({
-            name: requiredPortName,
-            direction: 'required',
-            interfaceRef: primaryInterface,
-            swcName: swcName
-          });
-          console.log(`Created R-Port: ${requiredPortName} for SWC: ${swcName}`);
+        
+        // EMS/Engine/Controller SWCs create R-Ports (they require data)
+        if (swcName.toLowerCase().includes('ems') || 
+            swcName.toLowerCase().includes('engine') || 
+            swcName.toLowerCase().includes('controller')) {
+          shouldCreateRPort = true;
+          console.log(`${swcName} is an EMS/Controller - creating R-Port (requirer)`);
         }
-        return;
-      }
-
-      // Create P-Port for sender SWC
-      if (senderSwc) {
-        const providedPortName = `${senderSwc.replace('_swc', '').replace('Controller', '')}_PPort`;
-        if (!artifacts.ports.find(p => p.name === providedPortName && p.swcName === senderSwc)) {
-          artifacts.ports.push({
-            name: providedPortName,
-            direction: 'provided',
-            interfaceRef: primaryInterface,
-            swcName: senderSwc
-          });
-          console.log(`Created P-Port: ${providedPortName} for sender SWC: ${senderSwc}`);
+        
+        // Default behavior for other SWCs
+        if (!shouldCreatePPort && !shouldCreateRPort) {
+          // Create both ports for general SWCs
+          shouldCreatePPort = true;
+          shouldCreateRPort = true;
         }
-      }
-
-      // Create R-Port for receiver SWC
-      if (receiverSwc) {
-        const requiredPortName = `${receiverSwc.replace('_swc', '').replace('Controller', '')}_RPort`;
-        if (!artifacts.ports.find(p => p.name === requiredPortName && p.swcName === receiverSwc)) {
-          artifacts.ports.push({
-            name: requiredPortName,
-            direction: 'required',
-            interfaceRef: primaryInterface,
-            swcName: receiverSwc
-          });
-          console.log(`Created R-Port: ${requiredPortName} for receiver SWC: ${receiverSwc}`);
+        
+        // Create P-Port if needed
+        if (shouldCreatePPort) {
+          const providedPortName = `${swcName.replace('_swc', '').replace('Controller', '')}_PPort`;
+          if (!artifacts.ports.find(p => p.name === providedPortName && p.swcName === swcName)) {
+            artifacts.ports.push({
+              name: providedPortName,
+              direction: 'provided',
+              interfaceRef: primaryInterface,
+              swcName: swcName
+            });
+            console.log(`Created P-Port: ${providedPortName} for SWC: ${swcName}`);
+          }
+        }
+        
+        // Create R-Port if needed
+        if (shouldCreateRPort) {
+          const requiredPortName = `${swcName.replace('_swc', '').replace('Controller', '')}_RPort`;
+          if (!artifacts.ports.find(p => p.name === requiredPortName && p.swcName === swcName)) {
+            artifacts.ports.push({
+              name: requiredPortName,
+              direction: 'required',
+              interfaceRef: primaryInterface,
+              swcName: swcName
+            });
+            console.log(`Created R-Port: ${requiredPortName} for SWC: ${swcName}`);
+          }
         }
       }
     }

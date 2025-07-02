@@ -10,7 +10,8 @@ import {
   Cable,
   Download,
   FileText,
-  Package
+  Package,
+  RefreshCw
 } from "lucide-react";
 import { useAutosarStore } from "@/store/autosarStore";
 import DeleteConfirmDialog from "@/components/DeleteConfirmDialog";
@@ -18,6 +19,7 @@ import EditPortDialog from "@/components/EditPortDialog";
 import CreatePortDialog from "@/components/CreatePortDialog";
 import CreateInterfaceDialog from "@/components/CreateInterfaceDialog";
 import SWCConnectionDialog from "@/components/SWCConnectionDialog";
+import { useEffect } from "react";
 
 const PortEditor = () => {
   const { toast } = useToast();
@@ -35,6 +37,12 @@ const PortEditor = () => {
   const [interfaceToDelete, setInterfaceToDelete] = useState<string | null>(null);
   const [editPortDialogOpen, setEditPortDialogOpen] = useState(false);
   const [portToEdit, setPortToEdit] = useState<any>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Force refresh when currentProject changes
+  useEffect(() => {
+    setRefreshKey(prev => prev + 1);
+  }, [currentProject]);
 
   if (!currentProject) {
     return (
@@ -52,6 +60,7 @@ const PortEditor = () => {
     });
     setDeletePortDialogOpen(false);
     setPortToDelete(null);
+    setRefreshKey(prev => prev + 1);
   };
 
   const handleDeleteInterface = (interfaceId: string) => {
@@ -62,6 +71,7 @@ const PortEditor = () => {
     });
     setDeleteInterfaceDialogOpen(false);
     setInterfaceToDelete(null);
+    setRefreshKey(prev => prev + 1);
   };
 
   const openEditPortDialog = (port: any) => {
@@ -69,16 +79,29 @@ const PortEditor = () => {
     setEditPortDialogOpen(true);
   };
 
-  const allPorts = currentProject.swcs.flatMap(swc => 
-    swc.ports.map(port => ({
+  const handleRefresh = () => {
+    setRefreshKey(prev => prev + 1);
+    toast({
+      title: "Refreshed",
+      description: "Port and interface data has been refreshed",
+    });
+  };
+
+  // FIXED: Properly get all ports from all SWCs
+  const allPorts = currentProject.swcs?.flatMap(swc => 
+    swc.ports?.map(port => ({
       ...port,
       swcName: swc.name,
       swcId: swc.id
-    }))
-  );
+    })) || []
+  ) || [];
+
+  console.log('Current Project:', currentProject);
+  console.log('All Ports:', allPorts);
+  console.log('All Interfaces:', currentProject.interfaces);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in" key={refreshKey}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -88,6 +111,10 @@ const PortEditor = () => {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={handleRefresh}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
           <Button variant="outline" onClick={exportArxml}>
             <Download className="h-4 w-4 mr-2" />
             Single ARXML
@@ -106,7 +133,7 @@ const PortEditor = () => {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>SWC Ports</CardTitle>
+                <CardTitle>SWC Ports ({allPorts.length})</CardTitle>
                 <CardDescription>
                   Manage communication ports for software components
                 </CardDescription>
@@ -118,9 +145,9 @@ const PortEditor = () => {
             <div className="space-y-4">
               {allPorts.length > 0 ? (
                 allPorts.map((port) => {
-                  const interface_ = currentProject.interfaces.find(i => i.id === port.interfaceRef);
+                  const interface_ = currentProject.interfaces?.find(i => i.id === port.interfaceRef);
                   return (
-                    <div key={port.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div key={`${port.swcId}-${port.id}`} className="flex items-center justify-between p-4 border rounded-lg">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
                           <h3 className="font-medium">{port.name}</h3>
@@ -175,7 +202,7 @@ const PortEditor = () => {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Port Interfaces</CardTitle>
+                <CardTitle>Port Interfaces ({currentProject.interfaces?.length || 0})</CardTitle>
                 <CardDescription>
                   Define communication interfaces and data elements
                 </CardDescription>
@@ -185,7 +212,7 @@ const PortEditor = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {currentProject.interfaces.length > 0 ? (
+              {currentProject.interfaces && currentProject.interfaces.length > 0 ? (
                 currentProject.interfaces.map((interface_) => (
                   <div key={interface_.id} className="flex items-center justify-between p-4 border rounded-lg">
                     <div className="flex-1">
@@ -243,19 +270,19 @@ const PortEditor = () => {
       {/* SWC Connections */}
       <Card className="autosar-card">
         <CardHeader>
-          <CardTitle>SWC Connections</CardTitle>
+          <CardTitle>SWC Connections ({currentProject.connections?.length || 0})</CardTitle>
           <CardDescription>
             Port-to-port connections between software components
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {currentProject.connections.length > 0 ? (
+            {currentProject.connections && currentProject.connections.length > 0 ? (
               currentProject.connections.map((connection) => {
-                const sourceSwc = currentProject.swcs.find(swc => swc.id === connection.sourceSwcId);
-                const targetSwc = currentProject.swcs.find(swc => swc.id === connection.targetSwcId);
-                const sourcePort = sourceSwc?.ports.find(p => p.id === connection.sourcePortId);
-                const targetPort = targetSwc?.ports.find(p => p.id === connection.targetPortId);
+                const sourceSwc = currentProject.swcs?.find(swc => swc.id === connection.sourceSwcId);
+                const targetSwc = currentProject.swcs?.find(swc => swc.id === connection.targetSwcId);
+                const sourcePort = sourceSwc?.ports?.find(p => p.id === connection.sourcePortId);
+                const targetPort = targetSwc?.ports?.find(p => p.id === connection.targetPortId);
                 
                 return (
                   <div key={connection.id} className="flex items-center justify-between p-4 border rounded-lg">
@@ -290,6 +317,22 @@ const PortEditor = () => {
         </CardContent>
       </Card>
 
+      {/* Debug Info */}
+      <Card className="autosar-card">
+        <CardHeader>
+          <CardTitle>Debug Information</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-sm text-muted-foreground space-y-2">
+            <p>Total SWCs: {currentProject.swcs?.length || 0}</p>
+            <p>Total Ports: {allPorts.length}</p>
+            <p>Total Interfaces: {currentProject.interfaces?.length || 0}</p>
+            <p>Total Connections: {currentProject.connections?.length || 0}</p>
+            <p>Refresh Key: {refreshKey}</p>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Dialogs */}
       <DeleteConfirmDialog
         open={deletePortDialogOpen}
@@ -305,7 +348,7 @@ const PortEditor = () => {
         onOpenChange={setDeleteInterfaceDialogOpen}
         title="Delete Interface"
         description="Are you sure you want to delete this interface? This action cannot be undone and may affect related ports."
-        itemName={currentProject.interfaces.find(i => i.id === interfaceToDelete)?.name || "Unknown Interface"}
+        itemName={currentProject.interfaces?.find(i => i.id === interfaceToDelete)?.name || "Unknown Interface"}
         onConfirm={() => interfaceToDelete && handleDeleteInterface(interfaceToDelete)}
       />
 
