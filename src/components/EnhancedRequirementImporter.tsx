@@ -109,6 +109,7 @@ const EnhancedRequirementImporter = () => {
         derivedElements: {
           swcs: ["EngineController"],
           interfaces: ["EngineSpeedInterface"],
+          signals: ["EngineSpeedSignal"],
           ports: ["SpeedDataPort"],
           runnables: ["Engine_10ms"]
         },
@@ -118,10 +119,11 @@ const EnhancedRequirementImporter = () => {
           type: "periodic"
         },
         communication: {
+          interfaceType: "SenderReceiver",
           direction: "sender",
           dataElements: [
-            { name: "EngineSpeed", type: "uint16" },
-            { name: "SpeedStatus", type: "uint8" }
+            { name: "EngineSpeed", type: "uint16", category: "VALUE" },
+            { name: "SpeedStatus", type: "uint8", category: "VALUE" }
           ]
         }
       },
@@ -135,6 +137,7 @@ const EnhancedRequirementImporter = () => {
         derivedElements: {
           swcs: ["BrakeSystemController"],
           interfaces: ["BrakePressureInterface"],
+          signals: ["BrakePressureSignal"],
           ports: ["PressureInputPort"],
           runnables: ["BrakeSystem_Event"]
         },
@@ -142,10 +145,11 @@ const EnhancedRequirementImporter = () => {
           type: "event"
         },
         communication: {
+          interfaceType: "SenderReceiver",
           direction: "receiver",
           dataElements: [
-            { name: "BrakePressure", type: "uint16" },
-            { name: "EmergencyFlag", type: "boolean" }
+            { name: "BrakePressure", type: "uint16", category: "VALUE" },
+            { name: "EmergencyFlag", type: "boolean", category: "VALUE" }
           ]
         }
       },
@@ -159,6 +163,7 @@ const EnhancedRequirementImporter = () => {
         derivedElements: {
           swcs: ["SystemController"],
           interfaces: ["DiagnosticInterface"],
+          signals: ["DiagnosticSignal"],
           ports: ["DiagnosticOutputPort"],
           runnables: ["System_Init"]
         },
@@ -166,10 +171,11 @@ const EnhancedRequirementImporter = () => {
           type: "init"
         },
         communication: {
+          interfaceType: "SenderReceiver",
           direction: "both",
           dataElements: [
-            { name: "InitStatus", type: "uint8" },
-            { name: "DiagnosticCode", type: "uint32" }
+            { name: "InitStatus", type: "uint8", category: "VALUE" },
+            { name: "DiagnosticCode", type: "uint32", category: "VALUE" }
           ]
         }
       }
