@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,7 +37,8 @@ interface GenerationPreview {
 
 const RequirementImporter = () => {
   const { toast } = useToast();
-  const { currentProject, createSWC, createInterface, createPort, createRunnable, addAccessPoint } = useAutosarStore();
+  const { currentProject } = useAutosarStore();
+  const store = useAutosarStore();
   
   // File processing state
   const [files, setFiles] = useState<File[]>([]);
@@ -92,6 +92,15 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
       return;
     }
 
+    if (!currentProject) {
+      toast({
+        title: "No Project",
+        description: "Please create or load a project first.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setProcessingState({
       isProcessing: true,
       progress: 0,
@@ -118,9 +127,13 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
         allRequirements.push(...manualParsed);
       }
 
-      // Step 3: Generate preview
-      setProcessingState(prev => ({ ...prev, progress: 60, currentStep: 'Generating preview...' }));
+      // Step 3: Generate artifacts and integrate into store
+      setProcessingState(prev => ({ ...prev, progress: 60, currentStep: 'Generating AUTOSAR artifacts...' }));
       const artifacts = AutosarGenerator.generateArtifacts(allRequirements);
+      
+      // Step 4: Integrate into store
+      setProcessingState(prev => ({ ...prev, progress: 80, currentStep: 'Integrating into project...' }));
+      AutosarGenerator.integrateArtifactsIntoStore(artifacts, store);
       
       const preview: GenerationPreview = {
         swcs: artifacts.swcs.map(swc => ({ name: swc.name, category: swc.category })),
@@ -149,8 +162,9 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
 
       toast({
         title: "Processing Complete",
-        description: `Successfully processed ${allRequirements.length} requirements.`
+        description: `Successfully processed ${allRequirements.length} requirements and generated ${artifacts.swcs.length} SWCs with ${artifacts.runnables.length} runnables and ${artifacts.accessPoints.length} access points.`
       });
+      
     } catch (error) {
       console.error('Processing error:', error);
       setProcessingState(prev => ({ 
@@ -169,94 +183,7 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
         setProcessingState(prev => ({ ...prev, isProcessing: false }));
       }
     }
-  }, [files, manualInput, toast, processingState.error]);
-
-  const generateArtifacts = useCallback(async () => {
-    if (!currentProject) {
-      toast({
-        title: "No Project",
-        description: "Please create or load a project first.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (requirements.length === 0) {
-      toast({
-        title: "No Requirements",
-        description: "Please process requirements first.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    try {
-      const artifacts = AutosarGenerator.generateArtifacts(requirements);
-      
-      // Create SWCs
-      for (const swcData of artifacts.swcs) {
-        createSWC({
-          name: swcData.name,
-          description: swcData.description,
-          category: swcData.category,
-          type: swcData.type,
-          ports: [],
-          runnables: []
-        });
-      }
-
-      // Create Interfaces
-      for (const interfaceData of artifacts.interfaces) {
-        createInterface({
-          name: interfaceData.name,
-          type: interfaceData.type,
-          dataElements: interfaceData.dataElements
-        });
-      }
-
-      // Create Ports (after SWCs and Interfaces are created)
-      for (const portData of artifacts.ports) {
-        const targetSwc = currentProject.swcs.find(swc => swc.name === portData.swcName);
-        if (targetSwc) {
-          createPort({
-            name: portData.name,
-            direction: portData.direction,
-            interfaceRef: portData.interfaceRef,
-            swcId: targetSwc.id
-          });
-        }
-      }
-
-      // Create Runnables
-      for (const runnableData of artifacts.runnables) {
-        const targetSwc = currentProject.swcs.find(swc => swc.name === runnableData.swcName);
-        if (targetSwc) {
-          createRunnable({
-            name: runnableData.name,
-            period: runnableData.period,
-            runnableType: runnableData.runnableType,
-            canBeInvokedConcurrently: runnableData.canBeInvokedConcurrently,
-            swcId: targetSwc.id,
-            accessPoints: [],
-            events: []
-          });
-        }
-      }
-
-      toast({
-        title: "Generation Complete",
-        description: `Successfully generated ${artifacts.swcs.length} SWCs, ${artifacts.interfaces.length} interfaces, ${artifacts.ports.length} ports, and ${artifacts.runnables.length} runnables.`
-      });
-
-    } catch (error) {
-      console.error('Generation error:', error);
-      toast({
-        title: "Generation Failed",
-        description: "Failed to generate AUTOSAR artifacts. Please try again.",
-        variant: "destructive"
-      });
-    }
-  }, [requirements, currentProject, createSWC, createInterface, createPort, createRunnable, toast]);
+  }, [files, manualInput, toast, currentProject, store, processingState.error]);
 
   const loadSampleData = useCallback(() => {
     setManualInput(sampleRequirements);
@@ -303,7 +230,7 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="upload">File Upload</TabsTrigger>
           <TabsTrigger value="manual">Manual Input</TabsTrigger>
-          <TabsTrigger value="preview">Preview & Generate</TabsTrigger>
+          <TabsTrigger value="preview">Preview & Results</TabsTrigger>
         </TabsList>
 
         {/* File Upload Tab */}
@@ -375,13 +302,13 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
           </Card>
         </TabsContent>
 
-        {/* Preview & Generate Tab */}
+        {/* Preview & Results Tab */}
         <TabsContent value="preview" className="space-y-4">
           {!generationPreview ? (
             <Card>
               <CardContent className="pt-6 text-center">
                 <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No preview available. Please process requirements first.</p>
+                <p className="text-muted-foreground">No results available. Please process requirements first.</p>
               </CardContent>
             </Card>
           ) : (
@@ -502,25 +429,15 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
         </Card>
       )}
 
-      {/* Action Buttons */}
-      <div className="flex justify-center gap-4">
+      {/* Action Button */}
+      <div className="flex justify-center">
         <Button 
           onClick={processFiles} 
-          disabled={processingState.isProcessing || (files.length === 0 && !manualInput.trim())}
+          disabled={processingState.isProcessing || (files.length === 0 && !manualInput.trim()) || !currentProject}
           size="lg"
         >
           <Play className="h-4 w-4 mr-2" />
-          Process Requirements
-        </Button>
-        
-        <Button 
-          onClick={generateArtifacts} 
-          disabled={!generationPreview || !currentProject}
-          variant="default"
-          size="lg"
-        >
-          <Zap className="h-4 w-4 mr-2" />
-          Generate AUTOSAR Artifacts
+          Process Requirements & Generate Artifacts
         </Button>
       </div>
     </div>

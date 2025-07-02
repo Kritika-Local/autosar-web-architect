@@ -141,7 +141,7 @@ const EnhancedRequirementImporter = () => {
 
     setIsProcessing(true);
     try {
-      // Parse the text input into requirement documents - parseText returns an array
+      // Parse the text input into requirement documents
       const parsedRequirements = RequirementParser.parseText(textInput);
 
       console.log('Parsed requirements:', parsedRequirements);
@@ -167,15 +167,15 @@ const EnhancedRequirementImporter = () => {
       
       console.log('Generated artifacts:', artifacts);
 
-      // Integrate artifacts into the store
+      // Integrate artifacts into the store using the proper method
       AutosarGenerator.integrateArtifactsIntoStore(artifacts, store);
 
       // Update requirements state
       setRequirements(updatedRequirements);
 
       toast({
-        title: "Requirements Processed",
-        description: `Successfully processed ${updatedRequirements.length} requirement(s) and generated ${artifacts.swcs.length} SWCs with ${artifacts.runnables.length} runnables`,
+        title: "Requirements Processed & Artifacts Generated",
+        description: `Successfully processed ${updatedRequirements.length} requirement(s) and generated ${artifacts.swcs.length} SWCs with ${artifacts.runnables.length} runnables and ${artifacts.accessPoints.length} access points`,
       });
 
       // Clear input
@@ -203,15 +203,15 @@ const EnhancedRequirementImporter = () => {
       
       console.log('Generated artifacts from sample:', artifacts);
 
-      // Integrate artifacts into the store
+      // Integrate artifacts into the store using the proper method
       AutosarGenerator.integrateArtifactsIntoStore(artifacts, store);
 
       // Update requirements state
       setRequirements([sampleReq]);
 
       toast({
-        title: "Sample Loaded",
-        description: `Successfully loaded sample and generated ${artifacts.swcs.length} SWCs with ${artifacts.runnables.length} runnables`,
+        title: "Sample Loaded & Artifacts Generated",
+        description: `Successfully loaded sample and generated ${artifacts.swcs.length} SWCs with ${artifacts.runnables.length} runnables and ${artifacts.accessPoints.length} access points`,
       });
       
     } catch (error) {
@@ -248,14 +248,14 @@ const EnhancedRequirementImporter = () => {
       
       console.log('Generated artifacts from file:', artifacts);
 
-      // Integrate artifacts into the store
+      // Integrate artifacts into the store using the proper method
       AutosarGenerator.integrateArtifactsIntoStore(artifacts, store);
 
       setRequirements(parsedRequirements);
 
       toast({
-        title: "File Processed",
-        description: `Successfully processed ${parsedRequirements.length} requirements and generated ${artifacts.swcs.length} SWCs`,
+        title: "File Processed & Artifacts Generated",
+        description: `Successfully processed ${parsedRequirements.length} requirements and generated ${artifacts.swcs.length} SWCs with ${artifacts.runnables.length} runnables and ${artifacts.accessPoints.length} access points`,
       });
       
     } catch (error) {
@@ -373,7 +373,7 @@ const EnhancedRequirementImporter = () => {
               disabled={isProcessing}
               className="autosar-button"
             >
-              {isProcessing ? "Processing..." : "Process Requirement"}
+              {isProcessing ? "Processing & Generating..." : "Process & Generate Artifacts"}
             </Button>
           </div>
         </CardContent>
@@ -407,7 +407,7 @@ const EnhancedRequirementImporter = () => {
                 </div>
                 <div>
                   <p className="text-lg font-medium">
-                    {isProcessing ? "Processing..." : "Drop files here or click to browse"}
+                    {isProcessing ? "Processing & Generating..." : "Drop files here or click to browse"}
                   </p>
                   <p className="text-muted-foreground">
                     Supports .docx, .xlsx, .txt, .csv files
@@ -450,7 +450,7 @@ const EnhancedRequirementImporter = () => {
                     onClick={() => handleSampleLoad(req)}
                     disabled={isProcessing}
                   >
-                    Load Sample
+                    {isProcessing ? "Loading..." : "Load & Generate"}
                   </Button>
                 </div>
                 <p className="text-sm text-muted-foreground mb-3">
