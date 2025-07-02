@@ -1,3 +1,4 @@
+
 import * as XLSX from 'xlsx';
 
 export interface RequirementDocument {
@@ -110,11 +111,11 @@ export class RequirementParser {
   private static parseLine(line: string, id: string): RequirementDocument | null {
     const lowercaseLine = line.toLowerCase();
     
-    // Extract SWC names
+    // Extract SWC names with enhanced patterns
     const swcs = this.extractSwcs(line);
     
-    // Extract interfaces
-    const interfaces = this.extractInterfaces(line);
+    // Extract interfaces with enhanced naming
+    const interfaces = this.extractInterfaces(line, swcs);
     
     // Extract signals/data elements
     const signals = this.extractSignals(line);
@@ -127,6 +128,10 @@ export class RequirementParser {
     
     // Extract ECU behavior
     const ecuBehavior = this.extractEcuBehavior(line);
+    
+    // Generate ports and runnables based on extracted data
+    const ports = this.generatePorts(swcs, interfaces);
+    const runnables = this.generateRunnables(swcs, timing);
     
     // Only create requirement if we found meaningful data
     if (swcs.length === 0 && interfaces.length === 0 && signals.length === 0) {
@@ -161,7 +166,9 @@ export class RequirementParser {
       derivedElements: {
         swcs,
         interfaces,
-        signals
+        signals,
+        ports,
+        runnables
       },
       communication,
       timing,
@@ -171,19 +178,38 @@ export class RequirementParser {
 
   private static extractSwcs(text: string): string[] {
     const swcs: string[] = [];
+    
+    // Enhanced patterns for SWC extraction
     const swcPatterns = [
+      // Direct SWC mentions: "sensor_swc", "EMS_swc"
+      /(?:software component|component)\s+(\w+_swc)/gi,
+      /(\w+_swc)(?:\s+shall|\s+must|\s+will)/gi,
+      // Controller patterns
       /(\w+)Controller/gi,
       /(\w+)\s+SWC/gi,
       /SWC\s+(\w+)/gi,
+      // General component patterns
       /implement\s+(\w+)/gi,
-      /(\w+)\s+shall/gi
+      /(\w+)\s+shall/gi,
+      // Direct _swc patterns
+      /(\w+_swc)/gi
     ];
     
     swcPatterns.forEach(pattern => {
       const matches = text.matchAll(pattern);
       for (const match of matches) {
         if (match[1] && match[1].length > 2) {
-          const swcName = match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase();
+          let swcName = match[1];
+          
+          // Ensure proper formatting
+          if (!swcName.endsWith('_swc') && !swcName.endsWith('Controller')) {
+            if (swcName.toLowerCase().includes('controller')) {
+              swcName = swcName.charAt(0).toUpperCase() + swcName.slice(1).toLowerCase();
+            } else {
+              swcName = swcName + '_swc';
+            }
+          }
+          
           if (!swcs.includes(swcName)) {
             swcs.push(swcName);
           }
@@ -194,20 +220,32 @@ export class RequirementParser {
     return swcs;
   }
 
-  private static extractInterfaces(text: string): string[] {
+  private static extractInterfaces(text: string, swcs: string[]): string[] {
     const interfaces: string[] = [];
+    
+    // Enhanced interface naming based on SWCs
+    if (swcs.length >= 2) {
+      // Create interface name from sender and receiver SWCs
+      const senderSwc = swcs[0].replace('_swc', '').replace('Controller', '');
+      const receiverSwc = swcs[1].replace('_swc', '').replace('Controller', '');
+      const interfaceName = `${senderSwc}_${receiverSwc}_portinterface`;
+      interfaces.push(interfaceName);
+    }
+    
+    // Standard interface patterns
     const interfacePatterns = [
       /(\w+)\s+interface/gi,
       /via\s+(\w+)/gi,
       /using\s+(\w+)\s+interface/gi,
-      /(\w+)Interface/gi
+      /(\w+)Interface/gi,
+      /(\w+)_portinterface/gi
     ];
     
     interfacePatterns.forEach(pattern => {
       const matches = text.matchAll(pattern);
       for (const match of matches) {
         if (match[1] && match[1].length > 2 && !match[1].toLowerCase().includes('sender') && !match[1].toLowerCase().includes('receiver')) {
-          const interfaceName = match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase() + 'Interface';
+          const interfaceName = match[1].includes('_portinterface') ? match[1] : match[1] + 'Interface';
           if (!interfaces.includes(interfaceName)) {
             interfaces.push(interfaceName);
           }
@@ -225,11 +263,17 @@ export class RequirementParser {
 
   private static extractSignals(text: string): string[] {
     const signals: string[] = [];
+    
+    // Enhanced signal patterns
     const signalPatterns = [
       /(\w+)\s+signal/gi,
-      /send\s+(\w+)/gi,
-      /receive\s+(\w+)/gi,
-      /(\w+)\s+data/gi
+      /send\s+(?:a\s+)?(\w+)(?:\s+value)?/gi,
+      /receive\s+(?:a\s+)?(\w+)(?:\s+value)?/gi,
+      /(\w+)\s+data/gi,
+      /(\w+)\s+value/gi,
+      // Specific value types
+      /(?:temperature|pressure|speed|voltage|current)\s+value/gi,
+      /(temperature|pressure|speed|voltage|current)/gi
     ];
     
     signalPatterns.forEach(pattern => {
@@ -247,6 +291,43 @@ export class RequirementParser {
     return signals;
   }
 
+  private static generatePorts(swcs: string[], interfaces: string[]): string[] {
+    const ports: string[] = [];
+    
+    if (swcs.length >= 2 && interfaces.length > 0) {
+      // Generate provided port for sender
+      const senderName = swcs[0].replace('_swc', '').replace('Controller', '');
+      ports.push(`${senderName}_ProvidedPort`);
+      
+      // Generate required port for receiver
+      const receiverName = swcs[1].replace('_swc', '').replace('Controller', '');
+      ports.push(`${receiverName}_RequiredPort`);
+    }
+    
+    return ports;
+  }
+
+  private static generateRunnables(swcs: string[], timing?: RequirementDocument['timing']): string[] {
+    const runnables: string[] = [];
+    
+    swcs.forEach(swc => {
+      const baseName = swc.replace('_swc', '').replace('Controller', '');
+      
+      // Always generate init runnable
+      runnables.push(`${swc}_init`);
+      
+      // Generate timing-specific runnable
+      if (timing?.type === 'periodic' && timing.period) {
+        const unit = timing.unit || 'ms';
+        runnables.push(`${swc}_${timing.period}${unit}`);
+      } else {
+        runnables.push(`${swc}_main`);
+      }
+    });
+    
+    return runnables;
+  }
+
   private static extractCommunication(text: string): RequirementDocument['communication'] | undefined {
     const lowercaseText = text.toLowerCase();
     
@@ -254,7 +335,9 @@ export class RequirementParser {
     let direction: 'sender' | 'receiver' | 'both' | undefined;
     
     // Determine interface type
-    if (lowercaseText.includes('client') || lowercaseText.includes('server') || lowercaseText.includes('call')) {
+    if (lowercaseText.includes('sender-receiver') || lowercaseText.includes('senderreceiver')) {
+      interfaceType = 'SenderReceiver';
+    } else if (lowercaseText.includes('client') || lowercaseText.includes('server') || lowercaseText.includes('call')) {
       interfaceType = 'ClientServer';
     } else if (lowercaseText.includes('mode')) {
       interfaceType = 'ModeSwitch';
@@ -276,7 +359,7 @@ export class RequirementParser {
     // Extract data elements
     const dataElements = this.extractDataElements(text);
     
-    if (direction || dataElements.length > 0) {
+    if (direction || dataElements.length > 0 || interfaceType !== 'SenderReceiver') {
       return {
         interfaceType,
         direction,
@@ -290,7 +373,7 @@ export class RequirementParser {
   private static extractDataElements(text: string): Array<{ name: string; type: string; category?: string }> {
     const dataElements: Array<{ name: string; type: string; category?: string }> = [];
     
-    // Pattern for type specifications like "uint16", "uint32", etc.
+    // Enhanced data element patterns
     const typePatterns = [
       /(\w+)\s+(?:shall be of type|type)\s+(uint\d+|int\d+|boolean|float|double)/gi,
       /(\w+)\s*\(\s*(uint\d+|int\d+|boolean|float|double)\s*\)/gi,
@@ -324,13 +407,25 @@ export class RequirementParser {
       }
     });
     
-    // If no specific data elements found, infer from signals
+    // If no specific data elements found, infer from signals and context
     if (dataElements.length === 0) {
       const signals = this.extractSignals(text);
       signals.forEach(signal => {
+        let dataType = 'uint16'; // Default for most automotive signals
+        
+        // Infer data type from signal name
+        const signalLower = signal.toLowerCase();
+        if (signalLower.includes('temperature') || signalLower.includes('pressure')) {
+          dataType = 'uint16';
+        } else if (signalLower.includes('speed') || signalLower.includes('rpm')) {
+          dataType = 'uint16';
+        } else if (signalLower.includes('status') || signalLower.includes('flag')) {
+          dataType = 'boolean';
+        }
+        
         dataElements.push({
           name: signal,
-          type: 'uint32', // Default type
+          type: dataType,
           category: 'VALUE'
         });
       });
@@ -345,7 +440,9 @@ export class RequirementParser {
       /(\d+)\s*(ms|milliseconds?)\s+period/gi,
       /period\s+of\s+(\d+)\s*(ms|milliseconds?)/gi,
       /(\d+)\s*(s|seconds?)\s+period/gi,
-      /every\s+(\d+)\s*(s|seconds?)/gi
+      /every\s+(\d+)\s*(s|seconds?)/gi,
+      /transmission\s+period\s+of\s+(\d+)\s*(ms|milliseconds?)/gi,
+      /with\s+a\s+transmission\s+period\s+of\s+(\d+)\s*(ms|milliseconds?)/gi
     ];
     
     for (const pattern of timingPatterns) {

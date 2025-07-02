@@ -1,4 +1,3 @@
-
 import { RequirementDocument } from './requirementParser';
 import { Swc, Interface, Port, Runnable, DataElement, AccessPoint } from '@/store/autosarStore';
 import { v4 as uuidv4 } from 'uuid';
@@ -68,12 +67,14 @@ export class AutosarGenerator {
 
   private static createSwcs(req: RequirementDocument, artifacts: AutosarArtifacts) {
     for (const swcName of req.derivedElements.swcs) {
-      const fullSwcName = swcName.endsWith('Controller') ? swcName : swcName + 'Controller';
+      // Keep original naming for _swc components, add Controller for others
+      const fullSwcName = swcName.endsWith('_swc') ? swcName : 
+                         swcName.endsWith('Controller') ? swcName : swcName + 'Controller';
       
       if (!artifacts.swcs.find(s => s.name === fullSwcName)) {
         artifacts.swcs.push({
           name: fullSwcName,
-          description: `Software component for ${swcName.replace('Controller', '').toLowerCase()} functionality (Generated from ${req.id})`,
+          description: `Software component for ${swcName.replace('Controller', '').replace('_swc', '').toLowerCase()} functionality (Generated from ${req.id})`,
           category: this.inferSwcCategory(req.description),
           type: 'atomic'
         });
@@ -118,17 +119,34 @@ export class AutosarGenerator {
       }
     }
 
-    // Ensure at least one data element
+    // Ensure at least one data element based on signals
+    if (dataElements.length === 0 && req.derivedElements.signals.length > 0) {
+      for (const signal of req.derivedElements.signals) {
+        dataElements.push({
+          id: uuidv4(),
+          name: signal,
+          applicationDataTypeRef: 'uint16', // Default automotive type
+          category: 'VALUE',
+          description: `Data element for ${signal} signal from ${req.id}`,
+          swDataDefProps: {
+            baseTypeRef: 'uint16',
+            implementationDataTypeRef: 'uint16'
+          }
+        });
+      }
+    }
+
+    // Fallback data element
     if (dataElements.length === 0) {
       dataElements.push({
         id: uuidv4(),
         name: 'DataElement',
-        applicationDataTypeRef: 'uint32',
+        applicationDataTypeRef: 'uint16',
         category: 'VALUE',
         description: `Default data element for ${interfaceName}`,
         swDataDefProps: {
-          baseTypeRef: 'uint32',
-          implementationDataTypeRef: 'uint32'
+          baseTypeRef: 'uint16',
+          implementationDataTypeRef: 'uint16'
         }
       });
     }
@@ -138,68 +156,86 @@ export class AutosarGenerator {
 
   private static createPorts(req: RequirementDocument, artifacts: AutosarArtifacts) {
     const swcs = req.derivedElements.swcs.map(name => 
-      name.endsWith('Controller') ? name : name + 'Controller'
+      name.endsWith('_swc') ? name : name.endsWith('Controller') ? name : name + 'Controller'
     );
     const interfaces = req.derivedElements.interfaces;
     
-    if (swcs.length === 0 || interfaces.length === 0) return;
+    if (swcs.length < 2 || interfaces.length === 0) {
+      // Handle single SWC case
+      if (swcs.length === 1 && interfaces.length > 0) {
+        const swcName = swcs[0];
+        const interfaceName = interfaces[0];
+        const communication = req.communication;
 
-    const primarySwc = swcs[0];
+        if (communication?.direction === 'sender' || communication?.direction === 'both') {
+          const portName = `${swcName.replace('_swc', '').replace('Controller', '')}_ProvidedPort`;
+          if (!artifacts.ports.find(p => p.name === portName && p.swcName === swcName)) {
+            artifacts.ports.push({
+              name: portName,
+              direction: 'provided',
+              interfaceRef: interfaceName,
+              swcName: swcName
+            });
+            console.log(`Created Provided Port: ${portName} for SWC: ${swcName}`);
+          }
+        }
+
+        if (communication?.direction === 'receiver' || communication?.direction === 'both') {
+          const portName = `${swcName.replace('_swc', '').replace('Controller', '')}_RequiredPort`;
+          if (!artifacts.ports.find(p => p.name === portName && p.swcName === swcName)) {
+            artifacts.ports.push({
+              name: portName,
+              direction: 'required',
+              interfaceRef: interfaceName,
+              swcName: swcName
+            });
+            console.log(`Created Required Port: ${portName} for SWC: ${swcName}`);
+          }
+        }
+      }
+      return;
+    }
+
+    // Handle two SWC communication case
+    const senderSwc = swcs[0];
+    const receiverSwc = swcs[1];
     const primaryInterface = interfaces[0];
-    const communication = req.communication;
 
-    // Create ports based on communication direction
-    if (communication?.direction === 'sender' || communication?.direction === 'both') {
-      const portName = primarySwc.replace('Controller', '') + 'OutputPort';
-      if (!artifacts.ports.find(p => p.name === portName && p.swcName === primarySwc)) {
-        artifacts.ports.push({
-          name: portName,
-          direction: 'provided',
-          interfaceRef: primaryInterface,
-          swcName: primarySwc
-        });
-        console.log(`Created Provided Port: ${portName} for SWC: ${primarySwc}`);
-      }
+    // Create provided port for sender SWC
+    const providedPortName = `${senderSwc.replace('_swc', '').replace('Controller', '')}_ProvidedPort`;
+    if (!artifacts.ports.find(p => p.name === providedPortName && p.swcName === senderSwc)) {
+      artifacts.ports.push({
+        name: providedPortName,
+        direction: 'provided',
+        interfaceRef: primaryInterface,
+        swcName: senderSwc
+      });
+      console.log(`Created Provided Port: ${providedPortName} for SWC: ${senderSwc}`);
     }
 
-    if (communication?.direction === 'receiver' || communication?.direction === 'both') {
-      const portName = primarySwc.replace('Controller', '') + 'InputPort';
-      if (!artifacts.ports.find(p => p.name === portName && p.swcName === primarySwc)) {
-        artifacts.ports.push({
-          name: portName,
-          direction: 'required',
-          interfaceRef: primaryInterface,
-          swcName: primarySwc
-        });
-        console.log(`Created Required Port: ${portName} for SWC: ${primarySwc}`);
-      }
-    }
-
-    // If no specific direction, create a provided port
-    if (!communication?.direction) {
-      const portName = primarySwc.replace('Controller', '') + 'Port';
-      if (!artifacts.ports.find(p => p.name === portName && p.swcName === primarySwc)) {
-        artifacts.ports.push({
-          name: portName,
-          direction: 'provided',
-          interfaceRef: primaryInterface,
-          swcName: primarySwc
-        });
-        console.log(`Created Default Port: ${portName} for SWC: ${primarySwc}`);
-      }
+    // Create required port for receiver SWC
+    const requiredPortName = `${receiverSwc.replace('_swc', '').replace('Controller', '')}_RequiredPort`;
+    if (!artifacts.ports.find(p => p.name === requiredPortName && p.swcName === receiverSwc)) {
+      artifacts.ports.push({
+        name: requiredPortName,
+        direction: 'required',
+        interfaceRef: primaryInterface,
+        swcName: receiverSwc
+      });
+      console.log(`Created Required Port: ${requiredPortName} for SWC: ${receiverSwc}`);
     }
   }
 
   private static createRunnables(req: RequirementDocument, artifacts: AutosarArtifacts) {
     const swcs = req.derivedElements.swcs.map(name => 
-      name.endsWith('Controller') ? name : name + 'Controller'
+      name.endsWith('_swc') ? name : name.endsWith('Controller') ? name : name + 'Controller'
     );
     
     for (const swcName of swcs) {
-      const baseName = swcName.replace('Controller', '');
+      const baseName = swcName.replace('_swc', '').replace('Controller', '');
       
       // Create Init runnable
-      const initRunnableName = baseName + '_Init';
+      const initRunnableName = `${swcName}_init`;
       if (!artifacts.runnables.find(r => r.name === initRunnableName && r.swcName === swcName)) {
         artifacts.runnables.push({
           name: initRunnableName,
@@ -218,14 +254,14 @@ export class AutosarGenerator {
 
       if (req.timing?.type === 'periodic' && req.timing.period) {
         period = req.timing.unit === 's' ? req.timing.period * 1000 : req.timing.period;
-        mainRunnableName = `${baseName}_${req.timing.period}${req.timing.unit || 'ms'}`;
+        mainRunnableName = `${swcName}_${req.timing.period}${req.timing.unit || 'ms'}`;
         runnableType = 'periodic';
       } else if (req.timing?.type === 'event') {
-        mainRunnableName = baseName + '_Event';
+        mainRunnableName = `${swcName}_Event`;
         runnableType = 'event';
         period = 0;
       } else {
-        mainRunnableName = baseName + '_Main';
+        mainRunnableName = `${swcName}_main`;
         runnableType = 'periodic';
       }
 
@@ -244,7 +280,7 @@ export class AutosarGenerator {
 
   private static createAccessPoints(req: RequirementDocument, artifacts: AutosarArtifacts) {
     const swcs = req.derivedElements.swcs.map(name => 
-      name.endsWith('Controller') ? name : name + 'Controller'
+      name.endsWith('_swc') ? name : name.endsWith('Controller') ? name : name + 'Controller'
     );
     
     for (const swcName of swcs) {
@@ -267,10 +303,10 @@ export class AutosarGenerator {
           
           if (port.direction === 'provided') {
             accessType = 'iWrite';
-            accessName = `Rte_IWrite_${port.name}_${dataElement.name}`;
+            accessName = `Rte_IWrite_${runnable.name}_${port.name}_${dataElement.name}`;
           } else {
             accessType = 'iRead';
-            accessName = `Rte_IRead_${port.name}_${dataElement.name}`;
+            accessName = `Rte_IRead_${runnable.name}_${port.name}_${dataElement.name}`;
           }
           
           // Check if access point already exists
@@ -290,7 +326,7 @@ export class AutosarGenerator {
               runnableName: runnable.name,
               swcName: swcName
             });
-            console.log(`Created Access Point: ${accessName} for ${runnable.name}`);
+            console.log(`Created Access Point: ${accessName} for ${runnable.name} (${accessType})`);
           }
         }
       }
