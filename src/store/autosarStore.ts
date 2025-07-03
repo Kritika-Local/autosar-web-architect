@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import { persist } from 'zustand/middleware';
@@ -715,7 +714,7 @@ ${content}
           URL.revokeObjectURL(url);
         };
 
-        // 1. Individual SWC files with proper DATA-SEND-POINTS generation
+        // 1. Individual SWC files with proper access points generation
         project.swcs.forEach(swc => {
           const swcUUID = generateUUID();
           const behaviorUUID = generateUUID();
@@ -802,39 +801,33 @@ ${(swc.runnables || []).map(runnable => {
   const readAccessPoints = (runnable.accessPoints || []).filter(ap => ap.type === 'iRead');
   const callAccessPoints = (runnable.accessPoints || []).filter(ap => ap.type === 'iCall');
   
-  // Generate DATA-SEND-POINTS for provided ports even if no access points exist
-  const providedPorts = (swc.ports || []).filter(p => p.direction === 'provided');
-  const hasDataSendPoints = writeAccessPoints.length > 0 || (providedPorts.length > 0 && runnable.runnableType === 'periodic');
-  
+  // Generate DATA-SEND-POINTS section for write access points
   let dataSendPointsContent = '';
-  if (hasDataSendPoints) {
-    if (writeAccessPoints.length > 0) {
-      // Use existing access points
-      dataSendPointsContent = writeAccessPoints.map(ap => {
-        const accessUUID = generateUUID();
-        
-        // Find the actual port by matching the portRef (which should be the port name)
-        const actualPort = (swc.ports || []).find(p => p.name === ap.portRef);
-        if (!actualPort) {
-          console.warn(`Port ${ap.portRef} not found for SWC ${swc.name}`);
-          return '';
-        }
-        
-        // Find the actual interface by the port's interface reference
-        const actualInterface = project.interfaces.find(iface => iface.id === actualPort.interfaceRef);
-        if (!actualInterface) {
-          console.warn(`Interface ${actualPort.interfaceRef} not found for port ${actualPort.name}`);
-          return '';
-        }
-        
-        // Use actual names as per the template: Rte_Write_<port name>_<data element>
-        const swcName = swc.name;
-        const portName = actualPort.name;
-        const portInterfaceName = actualInterface.name;
-        const dataElementName = ap.dataElementRef;
-        
-        return `                    <VARIABLE-ACCESS UUID="${accessUUID}">
-                      <SHORT-NAME>Rte_Write_${portName}_${dataElementName}</SHORT-NAME>
+  if (writeAccessPoints.length > 0) {
+    dataSendPointsContent = writeAccessPoints.map(ap => {
+      const accessUUID = generateUUID();
+      
+      // Find the actual port by matching the portRef
+      const actualPort = (swc.ports || []).find(p => p.name === ap.portRef || p.id === ap.portRef);
+      if (!actualPort) {
+        console.warn(`Port ${ap.portRef} not found for SWC ${swc.name}`);
+        return '';
+      }
+      
+      // Find the actual interface by the port's interface reference
+      const actualInterface = project.interfaces.find(iface => iface.id === actualPort.interfaceRef);
+      if (!actualInterface) {
+        console.warn(`Interface ${actualPort.interfaceRef} not found for port ${actualPort.name}`);
+        return '';
+      }
+      
+      const swcName = swc.name;
+      const portName = actualPort.name;
+      const portInterfaceName = actualInterface.name;
+      const dataElementName = ap.dataElementRef;
+      
+      return `                    <VARIABLE-ACCESS UUID="${accessUUID}">
+                      <SHORT-NAME>Rte_Write_${swcName}_${portName}_${dataElementName}</SHORT-NAME>
                       <ACCESSED-VARIABLE>
                         <AUTOSAR-VARIABLE-IREF>
                           <PORT-PROTOTYPE-REF DEST="P-PORT-PROTOTYPE">/ComponentTypes/${swcName}/${portName}</PORT-PROTOTYPE-REF>
@@ -842,9 +835,11 @@ ${(swc.runnables || []).map(runnable => {
                         </AUTOSAR-VARIABLE-IREF>
                       </ACCESSED-VARIABLE>
                     </VARIABLE-ACCESS>`;
-      }).filter(accessPoint => accessPoint).join('\n');
-    } else {
-      // Generate default DATA-SEND-POINTS for provided ports in periodic runnables
+    }).filter(accessPoint => accessPoint).join('\n');
+  } else {
+    // Generate default DATA-SEND-POINTS for provided ports in periodic runnables
+    const providedPorts = (swc.ports || []).filter(p => p.direction === 'provided');
+    if (providedPorts.length > 0 && runnable.runnableType === 'periodic') {
       dataSendPointsContent = providedPorts.map(port => {
         const accessUUID = generateUUID();
         const actualInterface = project.interfaces.find(iface => iface.id === port.interfaceRef);
@@ -864,7 +859,7 @@ ${(swc.runnables || []).map(runnable => {
         const dataElementName = firstDataElement.name;
         
         return `                    <VARIABLE-ACCESS UUID="${accessUUID}">
-                      <SHORT-NAME>Rte_Write_${portName}_${dataElementName}</SHORT-NAME>
+                      <SHORT-NAME>Rte_Write_${swcName}_${portName}_${dataElementName}</SHORT-NAME>
                       <ACCESSED-VARIABLE>
                         <AUTOSAR-VARIABLE-IREF>
                           <PORT-PROTOTYPE-REF DEST="P-PORT-PROTOTYPE">/ComponentTypes/${swcName}/${portName}</PORT-PROTOTYPE-REF>
@@ -876,39 +871,33 @@ ${(swc.runnables || []).map(runnable => {
     }
   }
   
-  return `                <RUNNABLE-ENTITY UUID="${runnableUUID}">
-                  <SHORT-NAME>${runnable.name}</SHORT-NAME>
-                  <CATEGORY>${runnableCategory}</CATEGORY>
-                  <CAN-BE-INVOKED-CONCURRENTLY>${runnable.canBeInvokedConcurrently || true}</CAN-BE-INVOKED-CONCURRENTLY>
-${hasDataSendPoints ? `                  <DATA-SEND-POINTS>
-${dataSendPointsContent}
-                  </DATA-SEND-POINTS>` : ''}
-${readAccessPoints.length > 0 ? `                  <DATA-RECEIVE-POINT-BY-ARGUMENTS>
-${readAccessPoints.map(ap => {
-  const accessUUID = generateUUID();
-  
-  // Find the actual port by matching the portRef
-  const actualPort = (swc.ports || []).find(p => p.name === ap.portRef);
-  if (!actualPort) {
-    console.warn(`Port ${ap.portRef} not found for SWC ${swc.name}`);
-    return '';
-  }
-  
-  // Find the actual interface by the port's interface reference
-  const actualInterface = project.interfaces.find(iface => iface.id === actualPort.interfaceRef);
-  if (!actualInterface) {
-    console.warn(`Interface ${actualPort.interfaceRef} not found for port ${actualPort.name}`);
-    return '';
-  }
-  
-  // Use actual names as per the template: Rte_Read_<port name>_<data element>
-  const swcName = swc.name;
-  const portName = actualPort.name;
-  const portInterfaceName = actualInterface.name;
-  const dataElementName = ap.dataElementRef;
-  
-  return `                    <VARIABLE-ACCESS UUID="${accessUUID}">
-                      <SHORT-NAME>Rte_Read_${portName}_${dataElementName}</SHORT-NAME>
+  // Generate DATA-RECEIVE-POINT-BY-ARGUMENT section for read access points
+  let dataReceivePointsContent = '';
+  if (readAccessPoints.length > 0) {
+    dataReceivePointsContent = readAccessPoints.map(ap => {
+      const accessUUID = generateUUID();
+      
+      // Find the actual port by matching the portRef
+      const actualPort = (swc.ports || []).find(p => p.name === ap.portRef || p.id === ap.portRef);
+      if (!actualPort) {
+        console.warn(`Port ${ap.portRef} not found for SWC ${swc.name}`);
+        return '';
+      }
+      
+      // Find the actual interface by the port's interface reference
+      const actualInterface = project.interfaces.find(iface => iface.id === actualPort.interfaceRef);
+      if (!actualInterface) {
+        console.warn(`Interface ${actualPort.interfaceRef} not found for port ${actualPort.name}`);
+        return '';
+      }
+      
+      const swcName = swc.name;
+      const portName = actualPort.name;
+      const portInterfaceName = actualInterface.name;
+      const dataElementName = ap.dataElementRef;
+      
+      return `                    <VARIABLE-ACCESS UUID="${accessUUID}">
+                      <SHORT-NAME>Rte_Read_${swcName}_${portName}_${dataElementName}</SHORT-NAME>
                       <ACCESSED-VARIABLE>
                         <AUTOSAR-VARIABLE-IREF>
                           <PORT-PROTOTYPE-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/${swcName}/${portName}</PORT-PROTOTYPE-REF>
@@ -916,14 +905,25 @@ ${readAccessPoints.map(ap => {
                         </AUTOSAR-VARIABLE-IREF>
                       </ACCESSED-VARIABLE>
                     </VARIABLE-ACCESS>`;
-}).filter(accessPoint => accessPoint).join('\n')}
-                  </DATA-RECEIVE-POINT-BY-ARGUMENTS>` : ''}
+    }).filter(accessPoint => accessPoint).join('\n');
+  }
+  
+  return `                <RUNNABLE-ENTITY UUID="${runnableUUID}">
+                  <SHORT-NAME>${runnable.name}</SHORT-NAME>
+                  <CATEGORY>${runnableCategory}</CATEGORY>
+                  <CAN-BE-INVOKED-CONCURRENTLY>${runnable.canBeInvokedConcurrently || true}</CAN-BE-INVOKED-CONCURRENTLY>
+${dataSendPointsContent ? `                  <DATA-SEND-POINTS>
+${dataSendPointsContent}
+                  </DATA-SEND-POINTS>` : ''}
+${dataReceivePointsContent ? `                  <DATA-RECEIVE-POINT-BY-ARGUMENT>
+${dataReceivePointsContent}
+                  </DATA-RECEIVE-POINT-BY-ARGUMENT>` : ''}
 ${callAccessPoints.length > 0 ? `                  <SERVER-CALL-POINTS>
 ${callAccessPoints.map(ap => {
   const callUUID = generateUUID();
   
   // Find the actual port by matching the portRef
-  const actualPort = (swc.ports || []).find(p => p.name === ap.portRef);
+  const actualPort = (swc.ports || []).find(p => p.name === ap.portRef || p.id === ap.portRef);
   if (!actualPort) {
     console.warn(`Port ${ap.portRef} not found for SWC ${swc.name}`);
     return '';
@@ -936,7 +936,6 @@ ${callAccessPoints.map(ap => {
     return '';
   }
   
-  // Use actual names as per the template: Rte_Call_<port name>_<operation>
   const swcName = swc.name;
   const portName = actualPort.name;
   const portInterfaceName = actualInterface.name;
@@ -1187,7 +1186,7 @@ ${project.swcs.map(swc => {
         
         createArxmlFile(systemExtractContent, 'SystemExtract.arxml');
 
-        console.log('AUTOSAR ARXML files exported with corrected DATA-SEND-POINTS structure:', {
+        console.log('AUTOSAR ARXML files exported with proper access points structure:', {
           individualSWCs: project.swcs.length,
           portInterfaces: 1,
           masterSWCs: 1,
