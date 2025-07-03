@@ -737,6 +737,43 @@ ${(swc.ports || []).map(port => {
               <RUNNABLES>
 ${(swc.runnables || []).map(runnable => {
   const runnableUUID = generateUUID();
+  
+  // Generate events for this specific runnable
+  const runnableEvents = [];
+  
+  if (runnable.runnableType === 'periodic' && runnable.period > 0) {
+    const eventUUID = generateUUID();
+    runnableEvents.push(`                  <TIMING-EVENT UUID="${eventUUID}">
+                    <SHORT-NAME>${runnable.name}_TimingEvent</SHORT-NAME>
+                    <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/AUTOSAR/${project.name}/SWComponents/${swc.name}/${swc.name}_InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
+                    <PERIOD>${(runnable.period / 1000).toFixed(3)}</PERIOD>
+                  </TIMING-EVENT>`);
+  }
+  
+  if (runnable.runnableType === 'init') {
+    const eventUUID = generateUUID();
+    runnableEvents.push(`                  <INIT-EVENT UUID="${eventUUID}">
+                    <SHORT-NAME>${runnable.name}_InitEvent</SHORT-NAME>
+                    <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/AUTOSAR/${project.name}/SWComponents/${swc.name}/${swc.name}_InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
+                  </INIT-EVENT>`);
+  }
+  
+  if (runnable.runnableType === 'event') {
+    // Find a required port for data received event
+    const requiredPort = (swc.ports || []).find(p => p.direction === 'required');
+    if (requiredPort) {
+      const eventUUID = generateUUID();
+      runnableEvents.push(`                  <DATA-RECEIVED-EVENT UUID="${eventUUID}">
+                    <SHORT-NAME>${runnable.name}_DataReceivedEvent</SHORT-NAME>
+                    <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/AUTOSAR/${project.name}/SWComponents/${swc.name}/${swc.name}_InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
+                    <DATA-IREF>
+                      <CONTEXT-R-PORT-REF DEST="R-PORT-PROTOTYPE">/AUTOSAR/${project.name}/SWComponents/${swc.name}/${requiredPort.name}</CONTEXT-R-PORT-REF>
+                      <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/AUTOSAR/${project.name}/PortInterfaces/${requiredPort.interfaceRef}/DataElement</TARGET-DATA-PROTOTYPE-REF>
+                    </DATA-IREF>
+                  </DATA-RECEIVED-EVENT>`);
+    }
+  }
+  
   return `                <RUNNABLE-ENTITY UUID="${runnableUUID}">
                   <SHORT-NAME>${runnable.name}</SHORT-NAME>
                   <SYMBOL>${runnable.name}</SYMBOL>
@@ -782,38 +819,12 @@ ${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').map(ap => {
                     </SYNCHRONOUS-SERVER-CALL-POINT>`;
 }).join('\n')}
                   </SERVER-CALL-POINTS>` : ''}
+${runnableEvents.length > 0 ? `                  <EVENTS>
+${runnableEvents.join('\n')}
+                  </EVENTS>` : ''}
                 </RUNNABLE-ENTITY>`;
 }).join('\n')}
               </RUNNABLES>
-              <EVENTS>
-${(swc.runnables || []).map(runnable => {
-  if (runnable.runnableType === 'periodic' && runnable.period > 0) {
-    const eventUUID = generateUUID();
-    return `                <TIMING-EVENT UUID="${eventUUID}">
-                  <SHORT-NAME>${runnable.name}_TimingEvent</SHORT-NAME>
-                  <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/AUTOSAR/${project.name}/SWComponents/${swc.name}/${swc.name}_InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
-                  <PERIOD>${(runnable.period / 1000).toFixed(3)}</PERIOD>
-                </TIMING-EVENT>`;
-  } else if (runnable.runnableType === 'init') {
-    const eventUUID = generateUUID();
-    return `                <INIT-EVENT UUID="${eventUUID}">
-                  <SHORT-NAME>${runnable.name}_InitEvent</SHORT-NAME>
-                  <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/AUTOSAR/${project.name}/SWComponents/${swc.name}/${swc.name}_InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
-                </INIT-EVENT>`;
-  } else if (runnable.runnableType === 'event') {
-    const eventUUID = generateUUID();
-    return `                <DATA-RECEIVED-EVENT UUID="${eventUUID}">
-                  <SHORT-NAME>${runnable.name}_DataReceivedEvent</SHORT-NAME>
-                  <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/AUTOSAR/${project.name}/SWComponents/${swc.name}/${swc.name}_InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
-                  <DATA-IREF>
-                    <CONTEXT-R-PORT-REF DEST="R-PORT-PROTOTYPE">/AUTOSAR/${project.name}/SWComponents/${swc.name}/InputPort</CONTEXT-R-PORT-REF>
-                    <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/AUTOSAR/${project.name}/PortInterfaces/DefaultInterface/DataElement</TARGET-DATA-PROTOTYPE-REF>
-                  </DATA-IREF>
-                </DATA-RECEIVED-EVENT>`;
-  }
-  return '';
-}).filter(event => event).join('\n')}
-              </EVENTS>
             </SWC-INTERNAL-BEHAVIOR>
           </INTERNAL-BEHAVIORS>
         </APPLICATION-SW-COMPONENT-TYPE>
