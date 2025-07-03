@@ -684,13 +684,13 @@ export const useAutosarStore = create<AutosarState>()(
           });
         };
         
-        // AUTOSAR XML header for individual SWC files
+        // AUTOSAR XML header for individual SWC files - using exact blueprint schema
         const xmlHeaderSWC = `<?xml version="1.0" encoding="utf-8"?>
 <AUTOSAR xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_00048.xsd"
          xmlns="http://autosar.org/schema/r4.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">`;
 
-        // AUTOSAR XML header for portinterfaces.arxml
+        // AUTOSAR XML header for portinterfaces.arxml - using specified schema
         const xmlHeaderPortInterfaces = `<?xml version="1.0" encoding="utf-8"?>
 <AUTOSAR xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_4-2-2.xsd"
          xmlns="http://autosar.org/schema/r4.0"
@@ -714,7 +714,7 @@ ${content}
           URL.revokeObjectURL(url);
         };
 
-        // 1. Individual SWC files following the exact blueprint structure
+        // 1. Individual SWC files following the exact blueprint structure with proper references
         project.swcs.forEach(swc => {
           const swcUUID = generateUUID();
           const behaviorUUID = generateUUID();
@@ -732,9 +732,13 @@ ${(swc.ports || []).map(port => {
   const portElement = port.direction === 'provided' ? 'P-PORT-PROTOTYPE' : 'R-PORT-PROTOTYPE';
   const interfaceRef = port.direction === 'provided' ? 'PROVIDED-INTERFACE-TREF' : 'REQUIRED-INTERFACE-TREF';
   
+  // Find the actual interface name from the project interfaces
+  const actualInterface = project.interfaces.find(iface => iface.id === port.interfaceRef);
+  const interfaceName = actualInterface ? actualInterface.name : port.interfaceRef;
+  
   return `            <${portElement} UUID="${portUUID}">
               <SHORT-NAME>${port.name}</SHORT-NAME>
-              <${interfaceRef} DEST="SENDER-RECEIVER-INTERFACE">/Interfaces/${port.interfaceRef}</${interfaceRef}>
+              <${interfaceRef} DEST="SENDER-RECEIVER-INTERFACE">/Interfaces/${interfaceName}</${interfaceRef}>
             </${portElement}>`;
 }).join('\n')}
           </PORTS>
@@ -768,12 +772,17 @@ ${(swc.runnables || []).map(runnable => {
     const requiredPort = (swc.ports || []).find(p => p.direction === 'required');
     if (requiredPort) {
       const eventUUID = generateUUID();
+      const actualInterface = project.interfaces.find(iface => iface.id === requiredPort.interfaceRef);
+      const interfaceName = actualInterface ? actualInterface.name : requiredPort.interfaceRef;
+      const firstDataElement = actualInterface?.dataElements[0];
+      const dataElementName = firstDataElement ? firstDataElement.name : 'DataElement';
+      
       events.push(`                <DATA-RECEIVED-EVENT UUID="${eventUUID}">
                   <SHORT-NAME>${runnable.name}_DataReceivedEvent</SHORT-NAME>
                   <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/ComponentTypes/${swc.name}/${swc.name}_InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
                   <DATA-IREF>
                     <CONTEXT-R-PORT-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/${swc.name}/${requiredPort.name}</CONTEXT-R-PORT-REF>
-                    <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/Interfaces/${requiredPort.interfaceRef}/DataElement</TARGET-DATA-PROTOTYPE-REF>
+                    <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/Interfaces/${interfaceName}/${dataElementName}</TARGET-DATA-PROTOTYPE-REF>
                   </DATA-IREF>
                 </DATA-RECEIVED-EVENT>`);
     }
@@ -794,12 +803,17 @@ ${(swc.runnables || []).map(runnable => {
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').length > 0 ? `                  <DATA-SEND-POINTS>
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').map(ap => {
   const accessUUID = generateUUID();
+  // Find the actual port and interface for proper referencing
+  const actualPort = (swc.ports || []).find(p => p.name === ap.portRef);
+  const actualInterface = actualPort ? project.interfaces.find(iface => iface.id === actualPort.interfaceRef) : null;
+  const interfaceName = actualInterface ? actualInterface.name : ap.portRef;
+  
   return `                    <VARIABLE-ACCESS UUID="${accessUUID}">
                       <SHORT-NAME>Rte_Write_${ap.portRef}_${ap.dataElementRef}</SHORT-NAME>
                       <ACCESSED-VARIABLE>
                         <AUTOSAR-VARIABLE-IREF>
                           <PORT-PROTOTYPE-REF DEST="P-PORT-PROTOTYPE">/ComponentTypes/${swc.name}/${ap.portRef}</PORT-PROTOTYPE-REF>
-                          <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/Interfaces/${ap.portRef}/${ap.dataElementRef}</TARGET-DATA-PROTOTYPE-REF>
+                          <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/Interfaces/${interfaceName}/${ap.dataElementRef}</TARGET-DATA-PROTOTYPE-REF>
                         </AUTOSAR-VARIABLE-IREF>
                       </ACCESSED-VARIABLE>
                     </VARIABLE-ACCESS>`;
@@ -808,12 +822,17 @@ ${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').map(ap => {
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').length > 0 ? `                  <DATA-RECEIVE-POINT-BY-ARGUMENTS>
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').map(ap => {
   const accessUUID = generateUUID();
+  // Find the actual port and interface for proper referencing
+  const actualPort = (swc.ports || []).find(p => p.name === ap.portRef);
+  const actualInterface = actualPort ? project.interfaces.find(iface => iface.id === actualPort.interfaceRef) : null;
+  const interfaceName = actualInterface ? actualInterface.name : ap.portRef;
+  
   return `                    <VARIABLE-ACCESS UUID="${accessUUID}">
                       <SHORT-NAME>Rte_Read_${ap.portRef}_${ap.dataElementRef}</SHORT-NAME>
                       <ACCESSED-VARIABLE>
                         <AUTOSAR-VARIABLE-IREF>
                           <PORT-PROTOTYPE-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/${swc.name}/${ap.portRef}</PORT-PROTOTYPE-REF>
-                          <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/Interfaces/${ap.portRef}/${ap.dataElementRef}</TARGET-DATA-PROTOTYPE-REF>
+                          <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/Interfaces/${interfaceName}/${ap.dataElementRef}</TARGET-DATA-PROTOTYPE-REF>
                         </AUTOSAR-VARIABLE-IREF>
                       </ACCESSED-VARIABLE>
                     </VARIABLE-ACCESS>`;
@@ -822,11 +841,16 @@ ${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').map(ap => {
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').length > 0 ? `                  <SERVER-CALL-POINTS>
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').map(ap => {
   const callUUID = generateUUID();
+  // Find the actual port and interface for proper referencing
+  const actualPort = (swc.ports || []).find(p => p.name === ap.portRef);
+  const actualInterface = actualPort ? project.interfaces.find(iface => iface.id === actualPort.interfaceRef) : null;
+  const interfaceName = actualInterface ? actualInterface.name : ap.portRef;
+  
   return `                    <SYNCHRONOUS-SERVER-CALL-POINT UUID="${callUUID}">
                       <SHORT-NAME>Rte_Call_${ap.portRef}_${ap.dataElementRef}</SHORT-NAME>
                       <OPERATION-IREF>
                         <CONTEXT-R-PORT-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/${swc.name}/${ap.portRef}</CONTEXT-R-PORT-REF>
-                        <TARGET-REQUIRED-OPERATION-REF DEST="CLIENT-SERVER-OPERATION">/Interfaces/${ap.portRef}/${ap.dataElementRef}</TARGET-REQUIRED-OPERATION-REF>
+                        <TARGET-REQUIRED-OPERATION-REF DEST="CLIENT-SERVER-OPERATION">/Interfaces/${interfaceName}/${ap.dataElementRef}</TARGET-REQUIRED-OPERATION-REF>
                       </OPERATION-IREF>
                     </SYNCHRONOUS-SERVER-CALL-POINT>`;
 }).join('\n')}
@@ -843,7 +867,7 @@ ${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').map(ap => {
           createArxmlFile(swcContent, `${swc.name}.arxml`);
         });
 
-        // 2. Port Interfaces with corrected paths and schema
+        // 2. Port Interfaces with corrected paths (removing /AUTOSAR/ prefix) and proper schema
         const interfacesPackageUUID = generateUUID();
         const interfacesContent = `    <AR-PACKAGE UUID="${interfacesPackageUUID}">
       <SHORT-NAME>Interfaces</SHORT-NAME>
@@ -1067,7 +1091,7 @@ ${project.swcs.map(swc => {
         
         createArxmlFile(systemExtractContent, 'SystemExtract.arxml');
 
-        console.log('AUTOSAR ARXML files exported with exact blueprint structure:', {
+        console.log('AUTOSAR ARXML files exported with proper reference structure:', {
           individualSWCs: project.swcs.length,
           portInterfaces: 1,
           masterSWCs: 1,
