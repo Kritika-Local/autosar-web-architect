@@ -1,3 +1,4 @@
+
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import { persist } from 'zustand/middleware';
@@ -824,6 +825,7 @@ ${(swc.runnables || []).map(runnable => {
       const swcName = swc.name;
       const portName = actualPort.name;
       const portInterfaceName = actualInterface.name;
+      // Use the actual data element name from the access point
       const dataElementName = ap.dataElementRef;
       
       return `                    <VARIABLE-ACCESS UUID="${accessUUID}">
@@ -894,6 +896,7 @@ ${(swc.runnables || []).map(runnable => {
       const swcName = swc.name;
       const portName = actualPort.name;
       const portInterfaceName = actualInterface.name;
+      // Use the actual data element name from the access point
       const dataElementName = ap.dataElementRef;
       
       return `                    <VARIABLE-ACCESS UUID="${accessUUID}">
