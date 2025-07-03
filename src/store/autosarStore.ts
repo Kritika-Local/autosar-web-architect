@@ -715,10 +715,11 @@ ${content}
           const packageUUID = generateUUID();
           
           const swcContent = `    <AR-PACKAGE UUID="${packageUUID}">
-      <SHORT-NAME>SWComponents</SHORT-NAME>
+      <SHORT-NAME>ComponentTypes</SHORT-NAME>
       <ELEMENTS>
         <APPLICATION-SW-COMPONENT-TYPE UUID="${swcUUID}">
           <SHORT-NAME>${swc.name}</SHORT-NAME>
+          <CATEGORY>APPLICATION</CATEGORY>
           <PORTS>
 ${(swc.ports || []).map(port => {
   const portUUID = generateUUID();
@@ -727,35 +728,32 @@ ${(swc.ports || []).map(port => {
   
   return `            <${portElement} UUID="${portUUID}">
               <SHORT-NAME>${port.name}</SHORT-NAME>
-              <${interfaceRef} DEST="SENDER-RECEIVER-INTERFACE">/AUTOSAR/${project.name}/PortInterfaces/${port.interfaceRef}</${interfaceRef}>
+              <${interfaceRef} DEST="SENDER-RECEIVER-INTERFACE">/Interfaces/${port.interfaceRef}</${interfaceRef}>
             </${portElement}>`;
 }).join('\n')}
           </PORTS>
           <INTERNAL-BEHAVIORS>
             <SWC-INTERNAL-BEHAVIOR UUID="${behaviorUUID}">
               <SHORT-NAME>${swc.name}_InternalBehavior</SHORT-NAME>
-              <RUNNABLES>
+              <EVENTS>
 ${(swc.runnables || []).map(runnable => {
-  const runnableUUID = generateUUID();
-  
-  // Generate events for this specific runnable
-  const runnableEvents = [];
-  
-  if (runnable.runnableType === 'periodic' && runnable.period > 0) {
-    const eventUUID = generateUUID();
-    runnableEvents.push(`                  <TIMING-EVENT UUID="${eventUUID}">
-                    <SHORT-NAME>${runnable.name}_TimingEvent</SHORT-NAME>
-                    <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/AUTOSAR/${project.name}/SWComponents/${swc.name}/${swc.name}_InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
-                    <PERIOD>${(runnable.period / 1000).toFixed(3)}</PERIOD>
-                  </TIMING-EVENT>`);
-  }
+  const events = [];
   
   if (runnable.runnableType === 'init') {
     const eventUUID = generateUUID();
-    runnableEvents.push(`                  <INIT-EVENT UUID="${eventUUID}">
-                    <SHORT-NAME>${runnable.name}_InitEvent</SHORT-NAME>
-                    <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/AUTOSAR/${project.name}/SWComponents/${swc.name}/${swc.name}_InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
-                  </INIT-EVENT>`);
+    events.push(`                <INIT-EVENT UUID="${eventUUID}">
+                  <SHORT-NAME>${runnable.name}_InitEvent</SHORT-NAME>
+                  <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/ComponentTypes/${swc.name}/${swc.name}_InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
+                </INIT-EVENT>`);
+  }
+  
+  if (runnable.runnableType === 'periodic' && runnable.period > 0) {
+    const eventUUID = generateUUID();
+    events.push(`                <TIMING-EVENT UUID="${eventUUID}">
+                  <SHORT-NAME>${runnable.name}_TimingEvent</SHORT-NAME>
+                  <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/ComponentTypes/${swc.name}/${swc.name}_InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
+                  <PERIOD>${(runnable.period / 1000).toFixed(3)}</PERIOD>
+                </TIMING-EVENT>`);
   }
   
   if (runnable.runnableType === 'event') {
@@ -763,36 +761,28 @@ ${(swc.runnables || []).map(runnable => {
     const requiredPort = (swc.ports || []).find(p => p.direction === 'required');
     if (requiredPort) {
       const eventUUID = generateUUID();
-      runnableEvents.push(`                  <DATA-RECEIVED-EVENT UUID="${eventUUID}">
-                    <SHORT-NAME>${runnable.name}_DataReceivedEvent</SHORT-NAME>
-                    <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/AUTOSAR/${project.name}/SWComponents/${swc.name}/${swc.name}_InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
-                    <DATA-IREF>
-                      <CONTEXT-R-PORT-REF DEST="R-PORT-PROTOTYPE">/AUTOSAR/${project.name}/SWComponents/${swc.name}/${requiredPort.name}</CONTEXT-R-PORT-REF>
-                      <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/AUTOSAR/${project.name}/PortInterfaces/${requiredPort.interfaceRef}/DataElement</TARGET-DATA-PROTOTYPE-REF>
-                    </DATA-IREF>
-                  </DATA-RECEIVED-EVENT>`);
+      events.push(`                <DATA-RECEIVED-EVENT UUID="${eventUUID}">
+                  <SHORT-NAME>${runnable.name}_DataReceivedEvent</SHORT-NAME>
+                  <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/ComponentTypes/${swc.name}/${swc.name}_InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
+                  <DATA-IREF>
+                    <CONTEXT-R-PORT-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/${swc.name}/${requiredPort.name}</CONTEXT-R-PORT-REF>
+                    <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/Interfaces/${requiredPort.interfaceRef}/DataElement</TARGET-DATA-PROTOTYPE-REF>
+                  </DATA-IREF>
+                </DATA-RECEIVED-EVENT>`);
     }
   }
   
+  return events.join('\n');
+}).filter(eventGroup => eventGroup).join('\n')}
+              </EVENTS>
+              <RUNNABLES>
+${(swc.runnables || []).map(runnable => {
+  const runnableUUID = generateUUID();
+  
   return `                <RUNNABLE-ENTITY UUID="${runnableUUID}">
                   <SHORT-NAME>${runnable.name}</SHORT-NAME>
-                  <SYMBOL>${runnable.name}</SYMBOL>
+                  <CATEGORY>${runnable.runnableType.toUpperCase()}</CATEGORY>
                   <CAN-BE-INVOKED-CONCURRENTLY>${runnable.canBeInvokedConcurrently || false}</CAN-BE-INVOKED-CONCURRENTLY>
-                  <MIN-START-INTERVAL>${runnable.period > 0 ? (runnable.period / 1000).toFixed(3) : '0.0'}</MIN-START-INTERVAL>
-${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').length > 0 ? `                  <DATA-RECEIVE-POINT-BY-ARGUMENTS>
-${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').map(ap => {
-  const accessUUID = generateUUID();
-  return `                    <VARIABLE-ACCESS UUID="${accessUUID}">
-                      <SHORT-NAME>${ap.name}</SHORT-NAME>
-                      <ACCESSED-VARIABLE>
-                        <AUTOSAR-VARIABLE-IREF>
-                          <PORT-PROTOTYPE-REF DEST="R-PORT-PROTOTYPE">/AUTOSAR/${project.name}/SWComponents/${swc.name}/${ap.portRef}</PORT-PROTOTYPE-REF>
-                          <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/AUTOSAR/${project.name}/PortInterfaces/${ap.portRef}/${ap.dataElementRef}</TARGET-DATA-PROTOTYPE-REF>
-                        </AUTOSAR-VARIABLE-IREF>
-                      </ACCESSED-VARIABLE>
-                    </VARIABLE-ACCESS>`;
-}).join('\n')}
-                  </DATA-RECEIVE-POINT-BY-ARGUMENTS>` : ''}
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').length > 0 ? `                  <DATA-SEND-POINTS>
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').map(ap => {
   const accessUUID = generateUUID();
@@ -800,28 +790,39 @@ ${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').map(ap => {
                       <SHORT-NAME>${ap.name}</SHORT-NAME>
                       <ACCESSED-VARIABLE>
                         <AUTOSAR-VARIABLE-IREF>
-                          <PORT-PROTOTYPE-REF DEST="P-PORT-PROTOTYPE">/AUTOSAR/${project.name}/SWComponents/${swc.name}/${ap.portRef}</PORT-PROTOTYPE-REF>
-                          <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/AUTOSAR/${project.name}/PortInterfaces/${ap.portRef}/${ap.dataElementRef}</TARGET-DATA-PROTOTYPE-REF>
+                          <PORT-PROTOTYPE-REF DEST="P-PORT-PROTOTYPE">/ComponentTypes/${swc.name}/${ap.portRef}</PORT-PROTOTYPE-REF>
+                          <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/Interfaces/${ap.portRef}/${ap.dataElementRef}</TARGET-DATA-PROTOTYPE-REF>
                         </AUTOSAR-VARIABLE-IREF>
                       </ACCESSED-VARIABLE>
                     </VARIABLE-ACCESS>`;
 }).join('\n')}
                   </DATA-SEND-POINTS>` : ''}
+${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').length > 0 ? `                  <DATA-RECEIVE-POINT-BY-ARGUMENTS>
+${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').map(ap => {
+  const accessUUID = generateUUID();
+  return `                    <VARIABLE-ACCESS UUID="${accessUUID}">
+                      <SHORT-NAME>${ap.name}</SHORT-NAME>
+                      <ACCESSED-VARIABLE>
+                        <AUTOSAR-VARIABLE-IREF>
+                          <PORT-PROTOTYPE-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/${swc.name}/${ap.portRef}</PORT-PROTOTYPE-REF>
+                          <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/Interfaces/${ap.portRef}/${ap.dataElementRef}</TARGET-DATA-PROTOTYPE-REF>
+                        </AUTOSAR-VARIABLE-IREF>
+                      </ACCESSED-VARIABLE>
+                    </VARIABLE-ACCESS>`;
+}).join('\n')}
+                  </DATA-RECEIVE-POINT-BY-ARGUMENTS>` : ''}
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').length > 0 ? `                  <SERVER-CALL-POINTS>
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').map(ap => {
   const callUUID = generateUUID();
   return `                    <SYNCHRONOUS-SERVER-CALL-POINT UUID="${callUUID}">
                       <SHORT-NAME>${ap.name}</SHORT-NAME>
                       <OPERATION-IREF>
-                        <CONTEXT-R-PORT-REF DEST="R-PORT-PROTOTYPE">/AUTOSAR/${project.name}/SWComponents/${swc.name}/${ap.portRef}</CONTEXT-R-PORT-REF>
-                        <TARGET-REQUIRED-OPERATION-REF DEST="CLIENT-SERVER-OPERATION">/AUTOSAR/${project.name}/PortInterfaces/${ap.portRef}/${ap.dataElementRef}</TARGET-REQUIRED-OPERATION-REF>
+                        <CONTEXT-R-PORT-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/${swc.name}/${ap.portRef}</CONTEXT-R-PORT-REF>
+                        <TARGET-REQUIRED-OPERATION-REF DEST="CLIENT-SERVER-OPERATION">/Interfaces/${ap.portRef}/${ap.dataElementRef}</TARGET-REQUIRED-OPERATION-REF>
                       </OPERATION-IREF>
                     </SYNCHRONOUS-SERVER-CALL-POINT>`;
 }).join('\n')}
                   </SERVER-CALL-POINTS>` : ''}
-${runnableEvents.length > 0 ? `                  <EVENTS>
-${runnableEvents.join('\n')}
-                  </EVENTS>` : ''}
                 </RUNNABLE-ENTITY>`;
 }).join('\n')}
               </RUNNABLES>
@@ -1011,11 +1012,11 @@ ${comp.connectors.map(conn => {
               <SHORT-NAME>${conn.name}</SHORT-NAME>
               <PROVIDER-IREF>
                 <CONTEXT-COMPONENT-REF DEST="SW-COMPONENT-PROTOTYPE">/ECUCompositions/${comp.name}/${conn.sourceInstanceId}</CONTEXT-COMPONENT-REF>
-                <TARGET-P-PORT-REF DEST="P-PORT-PROTOTYPE">/ComponentTypes/SWC/${conn.sourcePortId}</TARGET-P-PORT-REF>
+                <TARGET-P-PORT-REF DEST="P-PORT-PROTOTYPE">/ComponentTypes/${conn.sourceInstanceId}/${conn.sourcePortId}</TARGET-P-PORT-REF>
               </PROVIDER-IREF>
               <REQUESTER-IREF>
                 <CONTEXT-COMPONENT-REF DEST="SW-COMPONENT-PROTOTYPE">/ECUCompositions/${comp.name}/${conn.targetInstanceId}</CONTEXT-COMPONENT-REF>
-                <TARGET-R-PORT-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/SWC/${conn.targetPortId}</TARGET-R-PORT-REF>
+                <TARGET-R-PORT-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/${conn.targetInstanceId}/${conn.targetPortId}</TARGET-R-PORT-REF>
               </REQUESTER-IREF>
             </ASSEMBLY-SW-CONNECTOR>`;
 }).join('\n')}
