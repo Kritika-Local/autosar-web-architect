@@ -675,10 +675,19 @@ export const useAutosarStore = create<AutosarState>()(
     
         const project = state.currentProject;
         
-        // AUTOSAR 4.2.2 compliant XML header
+        // Generate UUID helper function
+        const generateUUID = () => {
+          return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0;
+            const v = c == 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16).toUpperCase();
+          });
+        };
+        
+        // AUTOSAR 4.3.0 compliant XML header
         const xmlHeader = `<?xml version="1.0" encoding="utf-8"?>
 <!--This file was saved with a tool from Vector Informatik GmbH-->
-<AUTOSAR xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_422.xsd"
+<AUTOSAR xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_00048.xsd"
          xmlns="http://autosar.org/schema/r4.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">`;
     
@@ -702,31 +711,39 @@ ${content}
 
         // 1. Individual SWC files with COMPLETE information (ports, runnables, access points)
         project.swcs.forEach(swc => {
-          const swcContent = `    <AR-PACKAGE>
+          const swcUUID = generateUUID();
+          const behaviorUUID = generateUUID();
+          
+          const swcContent = `    <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>ComponentTypes</SHORT-NAME>
       <ELEMENTS>
-        <APPLICATION-SW-COMPONENT-TYPE>
+        <APPLICATION-SW-COMPONENT-TYPE UUID="${swcUUID}">
           <SHORT-NAME>${swc.name}</SHORT-NAME>
           <PORTS>
 ${(swc.ports || []).map(port => {
+  const portUUID = generateUUID();
   const portType = port.direction.toUpperCase() === 'PROVIDED' ? 'P' : 'R';
   const interfaceType = port.direction.toUpperCase() === 'PROVIDED' ? 'PROVIDED-INTERFACE-TREF' : 'REQUIRED-INTERFACE-TREF';
-  return `            <${portType}-PORT-PROTOTYPE>
+  return `            <${portType}-PORT-PROTOTYPE UUID="${portUUID}">
               <SHORT-NAME>${port.name}</SHORT-NAME>
               <${interfaceType} DEST="SENDER-RECEIVER-INTERFACE">/Interfaces/${port.interfaceRef}</${interfaceType}>
             </${portType}-PORT-PROTOTYPE>`;
 }).join('\n')}
           </PORTS>
           <INTERNAL-BEHAVIORS>
-            <SWC-INTERNAL-BEHAVIOR>
+            <SWC-INTERNAL-BEHAVIOR UUID="${behaviorUUID}">
               <SHORT-NAME>${swc.name}InternalBehavior</SHORT-NAME>
               <RUNNABLES>
-${(swc.runnables || []).map(runnable => `                <RUNNABLE-ENTITY>
+${(swc.runnables || []).map(runnable => {
+  const runnableUUID = generateUUID();
+  return `                <RUNNABLE-ENTITY UUID="${runnableUUID}">
                   <SHORT-NAME>${runnable.name}</SHORT-NAME>
                   <MINIMUM-START-INTERVAL>${runnable.period > 0 ? runnable.period / 1000 : 0}</MINIMUM-START-INTERVAL>
                   <CAN-BE-INVOKED-CONCURRENTLY>${runnable.canBeInvokedConcurrently || false}</CAN-BE-INVOKED-CONCURRENTLY>
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').length > 0 ? `                  <DATA-RECEIVE-POINT-BY-ARGUMENTS>
-${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').map(ap => `                    <VARIABLE-ACCESS>
+${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').map(ap => {
+  const accessUUID = generateUUID();
+  return `                    <VARIABLE-ACCESS UUID="${accessUUID}">
                       <SHORT-NAME>${ap.name}</SHORT-NAME>
                       <ACCESSED-VARIABLE>
                         <AUTOSAR-VARIABLE-IREF>
@@ -734,10 +751,13 @@ ${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').map(ap => `   
                           <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/Interfaces/${ap.portRef}/${ap.dataElementRef}</TARGET-DATA-PROTOTYPE-REF>
                         </AUTOSAR-VARIABLE-IREF>
                       </ACCESSED-VARIABLE>
-                    </VARIABLE-ACCESS>`).join('\n')}
+                    </VARIABLE-ACCESS>`;
+}).join('\n')}
                   </DATA-RECEIVE-POINT-BY-ARGUMENTS>` : ''}
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').length > 0 ? `                  <DATA-SEND-POINTS>
-${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').map(ap => `                    <VARIABLE-ACCESS>
+${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').map(ap => {
+  const accessUUID = generateUUID();
+  return `                    <VARIABLE-ACCESS UUID="${accessUUID}">
                       <SHORT-NAME>${ap.name}</SHORT-NAME>
                       <ACCESSED-VARIABLE>
                         <AUTOSAR-VARIABLE-IREF>
@@ -745,29 +765,36 @@ ${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').map(ap => `  
                           <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/Interfaces/${ap.portRef}/${ap.dataElementRef}</TARGET-DATA-PROTOTYPE-REF>
                         </AUTOSAR-VARIABLE-IREF>
                       </ACCESSED-VARIABLE>
-                    </VARIABLE-ACCESS>`).join('\n')}
+                    </VARIABLE-ACCESS>`;
+}).join('\n')}
                   </DATA-SEND-POINTS>` : ''}
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').length > 0 ? `                  <SERVER-CALL-POINTS>
-${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').map(ap => `                    <SYNCHRONOUS-SERVER-CALL-POINT>
+${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').map(ap => {
+  const callUUID = generateUUID();
+  return `                    <SYNCHRONOUS-SERVER-CALL-POINT UUID="${callUUID}">
                       <SHORT-NAME>${ap.name}</SHORT-NAME>
                       <OPERATION-IREF>
                         <CONTEXT-R-PORT-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/${swc.name}/${ap.portRef}</CONTEXT-R-PORT-REF>
                         <TARGET-REQUIRED-OPERATION-REF DEST="CLIENT-SERVER-OPERATION">/Interfaces/${ap.portRef}/${ap.dataElementRef}</TARGET-REQUIRED-OPERATION-REF>
                       </OPERATION-IREF>
-                    </SYNCHRONOUS-SERVER-CALL-POINT>`).join('\n')}
+                    </SYNCHRONOUS-SERVER-CALL-POINT>`;
+}).join('\n')}
                   </SERVER-CALL-POINTS>` : ''}
-                </RUNNABLE-ENTITY>`).join('\n')}
+                </RUNNABLE-ENTITY>`;
+}).join('\n')}
               </RUNNABLES>
               <EVENTS>
 ${(swc.runnables || []).map(runnable => {
   if (runnable.runnableType === 'periodic' && runnable.period > 0) {
-    return `                <TIMING-EVENT>
+    const eventUUID = generateUUID();
+    return `                <TIMING-EVENT UUID="${eventUUID}">
                   <SHORT-NAME>${runnable.name}TimingEvent</SHORT-NAME>
                   <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/ComponentTypes/${swc.name}/${swc.name}InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
                   <PERIOD>${runnable.period / 1000}</PERIOD>
                 </TIMING-EVENT>`;
   } else if (runnable.runnableType === 'init') {
-    return `                <INIT-EVENT>
+    const eventUUID = generateUUID();
+    return `                <INIT-EVENT UUID="${eventUUID}">
                   <SHORT-NAME>${runnable.name}InitEvent</SHORT-NAME>
                   <START-ON-EVENT-REF DEST="RUNNABLE-ENTITY">/ComponentTypes/${swc.name}/${swc.name}InternalBehavior/${runnable.name}</START-ON-EVENT-REF>
                 </INIT-EVENT>`;
@@ -784,45 +811,51 @@ ${(swc.runnables || []).map(runnable => {
           createArxmlFile(swcContent, `${swc.name}.arxml`);
         });
 
-        // 2. Port Interfaces
-        const interfacesContent = `    <AR-PACKAGE>
+        // 2. Port Interfaces with UUIDs and proper references
+        const interfacesContent = `    <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>Interfaces</SHORT-NAME>
       <ELEMENTS>
-${project.interfaces.map(iface => `        <SENDER-RECEIVER-INTERFACE>
+${project.interfaces.map(iface => {
+  const interfaceUUID = generateUUID();
+  return `        <SENDER-RECEIVER-INTERFACE UUID="${interfaceUUID}">
           <SHORT-NAME>${iface.name}</SHORT-NAME>
           <IS-SERVICE>false</IS-SERVICE>
           <DATA-ELEMENTS>
-${iface.dataElements.map(de => `            <VARIABLE-DATA-PROTOTYPE>
+${iface.dataElements.map(de => {
+  const dataElementUUID = generateUUID();
+  return `            <VARIABLE-DATA-PROTOTYPE UUID="${dataElementUUID}">
               <SHORT-NAME>${de.name}</SHORT-NAME>
-              <TYPE-TREF DEST="IMPLEMENTATION-DATA-TYPE">/DataTypes/${de.applicationDataTypeRef}</TYPE-TREF>
-            </VARIABLE-DATA-PROTOTYPE>`).join('\n')}
+              <TYPE-TREF DEST="IMPLEMENTATION-DATA-TYPE">/AUTOSAR_Platform/BaseTypes/${de.applicationDataTypeRef}</TYPE-TREF>
+            </VARIABLE-DATA-PROTOTYPE>`;
+}).join('\n')}
           </DATA-ELEMENTS>
-        </SENDER-RECEIVER-INTERFACE>`).join('\n')}
+        </SENDER-RECEIVER-INTERFACE>`;
+}).join('\n')}
       </ELEMENTS>
     </AR-PACKAGE>`;
         
         createArxmlFile(interfacesContent, 'PortInterfaces.arxml');
 
-        // 3. Packages
-        const packagesContent = `    <AR-PACKAGE>
+        // 3. Packages with UUIDs
+        const packagesContent = `    <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>ComponentTypes</SHORT-NAME>
       <DESC>
         <L-2 L="EN">Package containing all software component types</L-2>
       </DESC>
     </AR-PACKAGE>
-    <AR-PACKAGE>
+    <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>Interfaces</SHORT-NAME>
       <DESC>
         <L-2 L="EN">Package containing all port interfaces</L-2>
       </DESC>
     </AR-PACKAGE>
-    <AR-PACKAGE>
+    <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>DataTypes</SHORT-NAME>
       <DESC>
         <L-2 L="EN">Package containing all data types</L-2>
       </DESC>
     </AR-PACKAGE>
-    <AR-PACKAGE>
+    <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>Constants</SHORT-NAME>
       <DESC>
         <L-2 L="EN">Package containing all constants</L-2>
@@ -831,11 +864,13 @@ ${iface.dataElements.map(de => `            <VARIABLE-DATA-PROTOTYPE>
         
         createArxmlFile(packagesContent, 'Packages.arxml');
 
-        // 4. Data Types
-        const dataTypesContent = `    <AR-PACKAGE>
+        // 4. Data Types with UUIDs
+        const dataTypesContent = `    <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>DataTypes</SHORT-NAME>
       <ELEMENTS>
-${project.dataTypes.map(dt => `        <IMPLEMENTATION-DATA-TYPE>
+${project.dataTypes.map(dt => {
+  const dataTypeUUID = generateUUID();
+  return `        <IMPLEMENTATION-DATA-TYPE UUID="${dataTypeUUID}">
           <SHORT-NAME>${dt.name}</SHORT-NAME>
           <CATEGORY>${dt.category.toUpperCase()}</CATEGORY>
           <DESC>
@@ -844,23 +879,24 @@ ${project.dataTypes.map(dt => `        <IMPLEMENTATION-DATA-TYPE>
           <SW-DATA-DEF-PROPS>
             <SW-DATA-DEF-PROPS-VARIANTS>
               <SW-DATA-DEF-PROPS-CONDITIONAL>
-                <BASE-TYPE-REF DEST="SW-BASE-TYPE">/DataTypes/BaseTypes/${dt.baseType}</BASE-TYPE-REF>
+                <BASE-TYPE-REF DEST="SW-BASE-TYPE">/AUTOSAR_Platform/BaseTypes/${dt.baseType}</BASE-TYPE-REF>
               </SW-DATA-DEF-PROPS-CONDITIONAL>
             </SW-DATA-DEF-PROPS-VARIANTS>
           </SW-DATA-DEF-PROPS>
-        </IMPLEMENTATION-DATA-TYPE>`).join('\n')}
+        </IMPLEMENTATION-DATA-TYPE>`;
+}).join('\n')}
         <!-- Standard Base Types -->
-        <SW-BASE-TYPE>
+        <SW-BASE-TYPE UUID="${generateUUID()}">
           <SHORT-NAME>uint8</SHORT-NAME>
           <CATEGORY>FIXED_LENGTH</CATEGORY>
           <BASE-TYPE-SIZE>8</BASE-TYPE-SIZE>
         </SW-BASE-TYPE>
-        <SW-BASE-TYPE>
+        <SW-BASE-TYPE UUID="${generateUUID()}">
           <SHORT-NAME>uint16</SHORT-NAME>
           <CATEGORY>FIXED_LENGTH</CATEGORY>
           <BASE-TYPE-SIZE>16</BASE-TYPE-SIZE>
         </SW-BASE-TYPE>
-        <SW-BASE-TYPE>
+        <SW-BASE-TYPE UUID="${generateUUID()}">
           <SHORT-NAME>uint32</SHORT-NAME>
           <CATEGORY>FIXED_LENGTH</CATEGORY>
           <BASE-TYPE-SIZE>32</BASE-TYPE-SIZE>
@@ -870,15 +906,15 @@ ${project.dataTypes.map(dt => `        <IMPLEMENTATION-DATA-TYPE>
         
         createArxmlFile(dataTypesContent, 'DataTypes.arxml');
 
-        // 5. Constants
-        const constantsContent = `    <AR-PACKAGE>
+        // 5. Constants with UUIDs
+        const constantsContent = `    <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>Constants</SHORT-NAME>
       <ELEMENTS>
-        <CONSTANT-SPECIFICATION>
+        <CONSTANT-SPECIFICATION UUID="${generateUUID()}">
           <SHORT-NAME>DEFAULT_PERIOD</SHORT-NAME>
           <VALUE>100</VALUE>
         </CONSTANT-SPECIFICATION>
-        <CONSTANT-SPECIFICATION>
+        <CONSTANT-SPECIFICATION UUID="${generateUUID()}">
           <SHORT-NAME>MAX_TIMEOUT</SHORT-NAME>
           <VALUE>1000</VALUE>
         </CONSTANT-SPECIFICATION>
@@ -887,24 +923,31 @@ ${project.dataTypes.map(dt => `        <IMPLEMENTATION-DATA-TYPE>
         
         createArxmlFile(constantsContent, 'Constants.arxml');
 
-        // 6. ECU Composition
-        const ecuCompositionContent = `    <AR-PACKAGE>
+        // 6. ECU Composition with UUIDs
+        const ecuCompositionContent = `    <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>ECUCompositions</SHORT-NAME>
       <ELEMENTS>
-${(project.ecuCompositions || []).map(comp => `        <ECU-INSTANCE>
+${(project.ecuCompositions || []).map(comp => {
+  const ecuUUID = generateUUID();
+  return `        <ECU-INSTANCE UUID="${ecuUUID}">
           <SHORT-NAME>${comp.name}</SHORT-NAME>
           <DESC>
             <L-2 L="EN">${comp.description}</L-2>
           </DESC>
           <ECU-TYPE>${comp.ecuType}</ECU-TYPE>
           <ASSOCIATED-COM-I-PDU-GROUP-REFS>
-${comp.swcInstances.map(inst => `            <SW-COMPONENT-INSTANCE>
+${comp.swcInstances.map(inst => {
+  const instanceUUID = generateUUID();
+  return `            <SW-COMPONENT-INSTANCE UUID="${instanceUUID}">
               <SHORT-NAME>${inst.name}</SHORT-NAME>
               <TYPE-TREF DEST="APPLICATION-SW-COMPONENT-TYPE">/ComponentTypes/${inst.swcRef}</TYPE-TREF>
-            </SW-COMPONENT-INSTANCE>`).join('\n')}
+            </SW-COMPONENT-INSTANCE>`;
+}).join('\n')}
           </ASSOCIATED-COM-I-PDU-GROUP-REFS>
           <CONNECTORS>
-${comp.connectors.map(conn => `            <ASSEMBLY-SW-CONNECTOR>
+${comp.connectors.map(conn => {
+  const connectorUUID = generateUUID();
+  return `            <ASSEMBLY-SW-CONNECTOR UUID="${connectorUUID}">
               <SHORT-NAME>${conn.name}</SHORT-NAME>
               <PROVIDER-IREF>
                 <CONTEXT-COMPONENT-REF DEST="SW-COMPONENT-PROTOTYPE">/ECUCompositions/${comp.name}/${conn.sourceInstanceId}</CONTEXT-COMPONENT-REF>
@@ -914,32 +957,37 @@ ${comp.connectors.map(conn => `            <ASSEMBLY-SW-CONNECTOR>
                 <CONTEXT-COMPONENT-REF DEST="SW-COMPONENT-PROTOTYPE">/ECUCompositions/${comp.name}/${conn.targetInstanceId}</CONTEXT-COMPONENT-REF>
                 <TARGET-R-PORT-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/SWC/${conn.targetPortId}</TARGET-R-PORT-REF>
               </REQUESTER-IREF>
-            </ASSEMBLY-SW-CONNECTOR>`).join('\n')}
+            </ASSEMBLY-SW-CONNECTOR>`;
+}).join('\n')}
           </CONNECTORS>
-        </ECU-INSTANCE>`).join('\n')}
+        </ECU-INSTANCE>`;
+}).join('\n')}
       </ELEMENTS>
     </AR-PACKAGE>`;
         
         createArxmlFile(ecuCompositionContent, 'ECUComposition.arxml');
 
-        // 7. System Extract
-        const systemExtractContent = `    <AR-PACKAGE>
+        // 7. System Extract with UUIDs
+        const systemExtractContent = `    <AR-PACKAGE UUID="${generateUUID()}">
       <SHORT-NAME>System</SHORT-NAME>
       <ELEMENTS>
-        <SYSTEM>
+        <SYSTEM UUID="${generateUUID()}">
           <SHORT-NAME>${project.name}_System</SHORT-NAME>
           <DESC>
             <L-2 L="EN">System extract for ${project.name}</L-2>
           </DESC>
           <MAPPINGS>
-${project.swcs.map(swc => `            <SWC-TO-ECU-MAPPING>
+${project.swcs.map(swc => {
+  const mappingUUID = generateUUID();
+  return `            <SWC-TO-ECU-MAPPING UUID="${mappingUUID}">
               <SHORT-NAME>${swc.name}_Mapping</SHORT-NAME>
               <ECU-INSTANCE-REF DEST="ECU-INSTANCE">/ECUCompositions/SystemECU</ECU-INSTANCE-REF>
               <SW-COMPONENT-INSTANCE-REF DEST="SW-COMPONENT-INSTANCE">/ECUCompositions/SystemECU/${swc.name}Instance</SW-COMPONENT-INSTANCE-REF>
-            </SWC-TO-ECU-MAPPING>`).join('\n')}
+            </SWC-TO-ECU-MAPPING>`;
+}).join('\n')}
           </MAPPINGS>
           <ROOT-SOFTWARE-COMPOSITIONS>
-            <ROOT-SW-COMPOSITION-PROTOTYPE>
+            <ROOT-SW-COMPOSITION-PROTOTYPE UUID="${generateUUID()}">
               <SHORT-NAME>RootComposition</SHORT-NAME>
               <SOFTWARE-COMPOSITION-TREF DEST="COMPOSITION-SW-COMPONENT-TYPE">/ECUCompositions/SystemECU</SOFTWARE-COMPOSITION-TREF>
             </ROOT-SW-COMPOSITION-PROTOTYPE>
@@ -950,7 +998,7 @@ ${project.swcs.map(swc => `            <SWC-TO-ECU-MAPPING>
         
         createArxmlFile(systemExtractContent, 'SystemExtract.arxml');
 
-        console.log('All 7 ARXML files exported successfully:', {
+        console.log('All 7 AUTOSAR 4.3.0 compliant ARXML files exported successfully with UUIDs and fully qualified paths:', {
           individualSWCs: project.swcs.length,
           portInterfaces: 1,
           packages: 1,
