@@ -803,57 +803,102 @@ ${(swc.runnables || []).map(runnable => {
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').length > 0 ? `                  <DATA-SEND-POINTS>
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').map(ap => {
   const accessUUID = generateUUID();
-  // Find the actual port and interface for proper referencing
+  // Find the actual port by name (not ID)
   const actualPort = (swc.ports || []).find(p => p.name === ap.portRef);
-  const actualInterface = actualPort ? project.interfaces.find(iface => iface.id === actualPort.interfaceRef) : null;
-  const portInterfaceName = actualInterface ? actualInterface.name : ap.portRef;
+  if (!actualPort) {
+    console.warn(`Port ${ap.portRef} not found for SWC ${swc.name}`);
+    return '';
+  }
+  
+  // Find the actual interface by the port's interface reference
+  const actualInterface = project.interfaces.find(iface => iface.id === actualPort.interfaceRef);
+  if (!actualInterface) {
+    console.warn(`Interface ${actualPort.interfaceRef} not found for port ${actualPort.name}`);
+    return '';
+  }
+  
+  // Use actual names instead of UUIDs
+  const swcName = swc.name;
+  const portName = actualPort.name;
+  const portInterfaceName = actualInterface.name;
+  const dataElementName = ap.dataElementRef;
   
   return `                    <VARIABLE-ACCESS UUID="${accessUUID}">
-                      <SHORT-NAME>Rte_Write_${ap.portRef}_${ap.dataElementRef}</SHORT-NAME>
+                      <SHORT-NAME>Rte_Write_${portName}_${dataElementName}</SHORT-NAME>
                       <ACCESSED-VARIABLE>
                         <AUTOSAR-VARIABLE-IREF>
-                          <PORT-PROTOTYPE-REF DEST="P-PORT-PROTOTYPE">/ComponentTypes/${swc.name}/${ap.portRef}</PORT-PROTOTYPE-REF>
-                          <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/Interfaces/${portInterfaceName}/${ap.dataElementRef}</TARGET-DATA-PROTOTYPE-REF>
+                          <PORT-PROTOTYPE-REF DEST="P-PORT-PROTOTYPE">/ComponentTypes/${swcName}/${portName}</PORT-PROTOTYPE-REF>
+                          <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/Interfaces/${portInterfaceName}/${dataElementName}</TARGET-DATA-PROTOTYPE-REF>
                         </AUTOSAR-VARIABLE-IREF>
                       </ACCESSED-VARIABLE>
                     </VARIABLE-ACCESS>`;
-}).join('\n')}
+}).filter(accessPoint => accessPoint).join('\n')}
                   </DATA-SEND-POINTS>` : ''}
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').length > 0 ? `                  <DATA-RECEIVE-POINT-BY-ARGUMENTS>
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').map(ap => {
   const accessUUID = generateUUID();
-  // Find the actual port and interface for proper referencing
+  // Find the actual port by name (not ID)
   const actualPort = (swc.ports || []).find(p => p.name === ap.portRef);
-  const actualInterface = actualPort ? project.interfaces.find(iface => iface.id === actualPort.interfaceRef) : null;
-  const portInterfaceName = actualInterface ? actualInterface.name : ap.portRef;
+  if (!actualPort) {
+    console.warn(`Port ${ap.portRef} not found for SWC ${swc.name}`);
+    return '';
+  }
+  
+  // Find the actual interface by the port's interface reference
+  const actualInterface = project.interfaces.find(iface => iface.id === actualPort.interfaceRef);
+  if (!actualInterface) {
+    console.warn(`Interface ${actualPort.interfaceRef} not found for port ${actualPort.name}`);
+    return '';
+  }
+  
+  // Use actual names instead of UUIDs
+  const swcName = swc.name;
+  const portName = actualPort.name;
+  const portInterfaceName = actualInterface.name;
+  const dataElementName = ap.dataElementRef;
   
   return `                    <VARIABLE-ACCESS UUID="${accessUUID}">
-                      <SHORT-NAME>Rte_Read_${ap.portRef}_${ap.dataElementRef}</SHORT-NAME>
+                      <SHORT-NAME>Rte_Read_${portName}_${dataElementName}</SHORT-NAME>
                       <ACCESSED-VARIABLE>
                         <AUTOSAR-VARIABLE-IREF>
-                          <PORT-PROTOTYPE-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/${swc.name}/${ap.portRef}</PORT-PROTOTYPE-REF>
-                          <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/Interfaces/${portInterfaceName}/${ap.dataElementRef}</TARGET-DATA-PROTOTYPE-REF>
+                          <PORT-PROTOTYPE-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/${swcName}/${portName}</PORT-PROTOTYPE-REF>
+                          <TARGET-DATA-PROTOTYPE-REF DEST="VARIABLE-DATA-PROTOTYPE">/Interfaces/${portInterfaceName}/${dataElementName}</TARGET-DATA-PROTOTYPE-REF>
                         </AUTOSAR-VARIABLE-IREF>
                       </ACCESSED-VARIABLE>
                     </VARIABLE-ACCESS>`;
-}).join('\n')}
+}).filter(accessPoint => accessPoint).join('\n')}
                   </DATA-RECEIVE-POINT-BY-ARGUMENTS>` : ''}
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').length > 0 ? `                  <SERVER-CALL-POINTS>
 ${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').map(ap => {
   const callUUID = generateUUID();
-  // Find the actual port and interface for proper referencing
+  // Find the actual port by name (not ID)
   const actualPort = (swc.ports || []).find(p => p.name === ap.portRef);
-  const actualInterface = actualPort ? project.interfaces.find(iface => iface.id === actualPort.interfaceRef) : null;
-  const portInterfaceName = actualInterface ? actualInterface.name : ap.portRef;
+  if (!actualPort) {
+    console.warn(`Port ${ap.portRef} not found for SWC ${swc.name}`);
+    return '';
+  }
+  
+  // Find the actual interface by the port's interface reference
+  const actualInterface = project.interfaces.find(iface => iface.id === actualPort.interfaceRef);
+  if (!actualInterface) {
+    console.warn(`Interface ${actualPort.interfaceRef} not found for port ${actualPort.name}`);
+    return '';
+  }
+  
+  // Use actual names instead of UUIDs
+  const swcName = swc.name;
+  const portName = actualPort.name;
+  const portInterfaceName = actualInterface.name;
+  const operationName = ap.dataElementRef;
   
   return `                    <SYNCHRONOUS-SERVER-CALL-POINT UUID="${callUUID}">
-                      <SHORT-NAME>Rte_Call_${ap.portRef}_${ap.dataElementRef}</SHORT-NAME>
+                      <SHORT-NAME>Rte_Call_${portName}_${operationName}</SHORT-NAME>
                       <OPERATION-IREF>
-                        <CONTEXT-R-PORT-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/${swc.name}/${ap.portRef}</CONTEXT-R-PORT-REF>
-                        <TARGET-REQUIRED-OPERATION-REF DEST="CLIENT-SERVER-OPERATION">/Interfaces/${portInterfaceName}/${ap.dataElementRef}</TARGET-REQUIRED-OPERATION-REF>
+                        <CONTEXT-R-PORT-REF DEST="R-PORT-PROTOTYPE">/ComponentTypes/${swcName}/${portName}</CONTEXT-R-PORT-REF>
+                        <TARGET-REQUIRED-OPERATION-REF DEST="CLIENT-SERVER-OPERATION">/Interfaces/${portInterfaceName}/${operationName}</TARGET-REQUIRED-OPERATION-REF>
                       </OPERATION-IREF>
                     </SYNCHRONOUS-SERVER-CALL-POINT>`;
-}).join('\n')}
+}).filter(callPoint => callPoint).join('\n')}
                   </SERVER-CALL-POINTS>` : ''}
                 </RUNNABLE-ENTITY>`;
 }).join('\n')}
