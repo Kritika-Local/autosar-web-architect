@@ -1,4 +1,5 @@
 
+
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import { persist } from 'zustand/middleware';
@@ -673,7 +674,7 @@ export const useAutosarStore = create<AutosarState>()(
       exportMultipleArxml: () => {
         const state = get();
         if (!state.currentProject) return;
-    
+
         const project = state.currentProject;
         
         // Generate UUID helper function
@@ -683,6 +684,27 @@ export const useAutosarStore = create<AutosarState>()(
             const v = c == 'x' ? r : (r & 0x3 | 0x8);
             return v.toString(16).toUpperCase();
           });
+        };
+        
+        // Helper function to find data element name by ID
+        const findDataElementName = (dataElementId: string) => {
+          // First check in project-level data elements
+          const projectDataElement = project.dataElements?.find(de => de.id === dataElementId);
+          if (projectDataElement) {
+            return projectDataElement.name;
+          }
+          
+          // Then check in interface data elements
+          for (const iface of project.interfaces) {
+            const interfaceDataElement = iface.dataElements.find(de => de.id === dataElementId);
+            if (interfaceDataElement) {
+              return interfaceDataElement.name;
+            }
+          }
+          
+          // If not found, return the ID as fallback (shouldn't happen in normal cases)
+          console.warn(`Data element with ID ${dataElementId} not found`);
+          return dataElementId;
         };
         
         // AUTOSAR XML header for individual SWC files - using exact blueprint schema
@@ -825,8 +847,8 @@ ${(swc.runnables || []).map(runnable => {
       const swcName = swc.name;
       const portName = actualPort.name;
       const portInterfaceName = actualInterface.name;
-      // Use the actual data element name from the access point
-      const dataElementName = ap.dataElementRef;
+      // Resolve the actual data element name from the UUID
+      const dataElementName = findDataElementName(ap.dataElementRef);
       
       return `                    <VARIABLE-ACCESS UUID="${accessUUID}">
                       <SHORT-NAME>Rte_Write_${swcName}_${portName}_${dataElementName}</SHORT-NAME>
@@ -896,8 +918,8 @@ ${(swc.runnables || []).map(runnable => {
       const swcName = swc.name;
       const portName = actualPort.name;
       const portInterfaceName = actualInterface.name;
-      // Use the actual data element name from the access point
-      const dataElementName = ap.dataElementRef;
+      // Resolve the actual data element name from the UUID
+      const dataElementName = findDataElementName(ap.dataElementRef);
       
       return `                    <VARIABLE-ACCESS UUID="${accessUUID}">
                       <SHORT-NAME>Rte_Read_${swcName}_${portName}_${dataElementName}</SHORT-NAME>
@@ -942,7 +964,7 @@ ${callAccessPoints.map(ap => {
   const swcName = swc.name;
   const portName = actualPort.name;
   const portInterfaceName = actualInterface.name;
-  const operationName = ap.dataElementRef;
+  const operationName = findDataElementName(ap.dataElementRef);
   
   return `                    <SYNCHRONOUS-SERVER-CALL-POINT UUID="${callUUID}">
                       <SHORT-NAME>Rte_Call_${portName}_${operationName}</SHORT-NAME>
@@ -1202,3 +1224,4 @@ ${project.swcs.map(swc => {
     }
   )
 );
+
