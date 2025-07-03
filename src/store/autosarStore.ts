@@ -714,7 +714,7 @@ ${content}
           URL.revokeObjectURL(url);
         };
 
-        // 1. Individual SWC files following the exact blueprint structure with corrected DATA-SEND-POINTS
+        // 1. Individual SWC files with corrected DATA-SEND-POINTS structure
         project.swcs.forEach(swc => {
           const swcUUID = generateUUID();
           const behaviorUUID = generateUUID();
@@ -796,14 +796,20 @@ ${(swc.runnables || []).map(runnable => {
   const runnableUUID = generateUUID();
   const runnableCategory = runnable.runnableType.toUpperCase();
   
+  // Filter access points by type for proper section generation
+  const writeAccessPoints = (runnable.accessPoints || []).filter(ap => ap.type === 'iWrite');
+  const readAccessPoints = (runnable.accessPoints || []).filter(ap => ap.type === 'iRead');
+  const callAccessPoints = (runnable.accessPoints || []).filter(ap => ap.type === 'iCall');
+  
   return `                <RUNNABLE-ENTITY UUID="${runnableUUID}">
                   <SHORT-NAME>${runnable.name}</SHORT-NAME>
                   <CATEGORY>${runnableCategory}</CATEGORY>
                   <CAN-BE-INVOKED-CONCURRENTLY>${runnable.canBeInvokedConcurrently || true}</CAN-BE-INVOKED-CONCURRENTLY>
-${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').length > 0 ? `                  <DATA-SEND-POINTS>
-${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').map(ap => {
+${writeAccessPoints.length > 0 ? `                  <DATA-SEND-POINTS>
+${writeAccessPoints.map(ap => {
   const accessUUID = generateUUID();
-  // Find the actual port by name (not ID)
+  
+  // Find the actual port by matching the portRef (which should be the port name)
   const actualPort = (swc.ports || []).find(p => p.name === ap.portRef);
   if (!actualPort) {
     console.warn(`Port ${ap.portRef} not found for SWC ${swc.name}`);
@@ -817,7 +823,7 @@ ${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').map(ap => {
     return '';
   }
   
-  // Use actual names instead of UUIDs
+  // Use actual names as per the template: Rte_Write_<port name>_<data element>
   const swcName = swc.name;
   const portName = actualPort.name;
   const portInterfaceName = actualInterface.name;
@@ -834,10 +840,11 @@ ${(runnable.accessPoints || []).filter(ap => ap.type === 'iWrite').map(ap => {
                     </VARIABLE-ACCESS>`;
 }).filter(accessPoint => accessPoint).join('\n')}
                   </DATA-SEND-POINTS>` : ''}
-${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').length > 0 ? `                  <DATA-RECEIVE-POINT-BY-ARGUMENTS>
-${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').map(ap => {
+${readAccessPoints.length > 0 ? `                  <DATA-RECEIVE-POINT-BY-ARGUMENTS>
+${readAccessPoints.map(ap => {
   const accessUUID = generateUUID();
-  // Find the actual port by name (not ID)
+  
+  // Find the actual port by matching the portRef
   const actualPort = (swc.ports || []).find(p => p.name === ap.portRef);
   if (!actualPort) {
     console.warn(`Port ${ap.portRef} not found for SWC ${swc.name}`);
@@ -851,7 +858,7 @@ ${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').map(ap => {
     return '';
   }
   
-  // Use actual names instead of UUIDs
+  // Use actual names as per the template: Rte_Read_<port name>_<data element>
   const swcName = swc.name;
   const portName = actualPort.name;
   const portInterfaceName = actualInterface.name;
@@ -868,10 +875,11 @@ ${(runnable.accessPoints || []).filter(ap => ap.type === 'iRead').map(ap => {
                     </VARIABLE-ACCESS>`;
 }).filter(accessPoint => accessPoint).join('\n')}
                   </DATA-RECEIVE-POINT-BY-ARGUMENTS>` : ''}
-${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').length > 0 ? `                  <SERVER-CALL-POINTS>
-${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').map(ap => {
+${callAccessPoints.length > 0 ? `                  <SERVER-CALL-POINTS>
+${callAccessPoints.map(ap => {
   const callUUID = generateUUID();
-  // Find the actual port by name (not ID)
+  
+  // Find the actual port by matching the portRef
   const actualPort = (swc.ports || []).find(p => p.name === ap.portRef);
   if (!actualPort) {
     console.warn(`Port ${ap.portRef} not found for SWC ${swc.name}`);
@@ -885,7 +893,7 @@ ${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').map(ap => {
     return '';
   }
   
-  // Use actual names instead of UUIDs
+  // Use actual names as per the template: Rte_Call_<port name>_<operation>
   const swcName = swc.name;
   const portName = actualPort.name;
   const portInterfaceName = actualInterface.name;
