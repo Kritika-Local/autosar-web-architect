@@ -714,7 +714,7 @@ ${content}
           URL.revokeObjectURL(url);
         };
 
-        // 1. Individual SWC files following the exact blueprint structure with proper references
+        // 1. Individual SWC files following the exact blueprint structure with corrected DATA-SEND-POINTS
         project.swcs.forEach(swc => {
           const swcUUID = generateUUID();
           const behaviorUUID = generateUUID();
@@ -867,7 +867,7 @@ ${(runnable.accessPoints || []).filter(ap => ap.type === 'iCall').map(ap => {
           createArxmlFile(swcContent, `${swc.name}.arxml`);
         });
 
-        // 2. Port Interfaces with corrected paths (removing /AUTOSAR/ prefix) and proper schema
+        // 2. Port Interfaces with corrected paths and proper schema
         const interfacesPackageUUID = generateUUID();
         const interfacesContent = `    <AR-PACKAGE UUID="${interfacesPackageUUID}">
       <SHORT-NAME>Interfaces</SHORT-NAME>
@@ -1091,7 +1091,7 @@ ${project.swcs.map(swc => {
         
         createArxmlFile(systemExtractContent, 'SystemExtract.arxml');
 
-        console.log('AUTOSAR ARXML files exported with proper reference structure:', {
+        console.log('AUTOSAR ARXML files exported with corrected DATA-SEND-POINTS structure:', {
           individualSWCs: project.swcs.length,
           portInterfaces: 1,
           masterSWCs: 1,
