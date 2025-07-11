@@ -1,4 +1,5 @@
 
+
 import React, { useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -139,9 +140,8 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
       // Step 5: Force GUI refresh across all menus
       setProcessingState(prev => ({ ...prev, progress: 90, currentStep: 'Refreshing all views...' }));
       
-      // Force a complete refresh of all data
+      // Force a complete refresh of all data using custom event
       setTimeout(() => {
-        // Trigger re-render of all components
         window.dispatchEvent(new CustomEvent('autosar-refresh'));
       }, 100);
       
