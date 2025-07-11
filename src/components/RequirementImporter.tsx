@@ -1,12 +1,10 @@
-
-
 import React, { useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Upload, 
@@ -39,8 +37,7 @@ interface GenerationPreview {
 
 const RequirementImporter = () => {
   const { toast } = useToast();
-  const { currentProject } = useAutosarStore();
-  const store = useAutosarStore();
+  const { currentProject, addSWC, addInterface, addPort, addRunnable, addAccessPoint, addDataElement } = useAutosarStore();
   
   // File processing state
   const [files, setFiles] = useState<File[]>([]);
@@ -129,15 +126,80 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
         allRequirements.push(...manualParsed);
       }
 
-      // Step 3: Generate artifacts and integrate into store
+      // Step 3: Generate artifacts
       setProcessingState(prev => ({ ...prev, progress: 60, currentStep: 'Generating AUTOSAR artifacts...' }));
       const artifacts = AutosarGenerator.generateArtifacts(allRequirements);
       
-      // Step 4: Integrate into store with GUI synchronization
-      setProcessingState(prev => ({ ...prev, progress: 80, currentStep: 'Integrating into project and syncing GUI...' }));
-      AutosarGenerator.integrateArtifactsIntoStore(artifacts, store);
+      // Step 4: Integrate artifacts directly using store methods
+      setProcessingState(prev => ({ ...prev, progress: 80, currentStep: 'Integrating into project...' }));
       
-      // Step 5: Force GUI refresh across all menus
+      // Add interfaces first
+      artifacts.interfaces.forEach(iface => {
+        addInterface({
+          id: iface.id,
+          name: iface.name,
+          type: iface.type,
+          dataElements: iface.dataElements.map(de => ({
+            id: de.id,
+            name: de.name,
+            type: de.type,
+            category: de.category
+          })),
+          description: iface.description || `Generated from requirements`
+        });
+      });
+
+      // Add SWCs
+      artifacts.swcs.forEach(swc => {
+        addSWC({
+          id: swc.id,
+          name: swc.name,
+          category: swc.category,
+          description: swc.description || `Generated from requirements`,
+          ports: [],
+          runnables: [],
+          accessPoints: []
+        });
+      });
+
+      // Add ports
+      artifacts.ports.forEach(port => {
+        addPort({
+          id: port.id,
+          name: port.name,
+          direction: port.direction,
+          interfaceRef: port.interfaceRef,
+          swcName: port.swcName,
+          description: port.description || `Generated from requirements`
+        });
+      });
+
+      // Add runnables
+      artifacts.runnables.forEach(runnable => {
+        addRunnable({
+          id: runnable.id,
+          name: runnable.name,
+          swcName: runnable.swcName,
+          runnableType: runnable.runnableType,
+          period: runnable.period,
+          description: runnable.description || `Generated from requirements`
+        });
+      });
+
+      // Add access points
+      artifacts.accessPoints.forEach(ap => {
+        addAccessPoint({
+          id: ap.id,
+          name: ap.name,
+          type: ap.type,
+          portRef: ap.portRef,
+          runnableRef: ap.runnableRef,
+          dataElementRef: ap.dataElementRef,
+          description: ap.description || `Generated from requirements`
+        });
+      });
+
+      // Step 5: Force GUI refresh
       setProcessingState(prev => ({ ...prev, progress: 90, currentStep: 'Refreshing all views...' }));
       
       // Force a complete refresh of all data using custom event
@@ -165,14 +227,14 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
         }))
       };
 
-      setProcessingState(prev => ({ ...prev, progress: 100, currentStep: 'Complete - GUI synchronized!' }));
+      setProcessingState(prev => ({ ...prev, progress: 100, currentStep: 'Complete!' }));
       setRequirements(allRequirements);
       setGenerationPreview(preview);
       setActiveTab('preview');
 
       toast({
         title: "Processing Complete",
-        description: `Successfully processed ${allRequirements.length} requirements and generated ${artifacts.swcs.length} SWCs with ${artifacts.runnables.length} runnables and ${artifacts.accessPoints.length} access points. All menus have been synchronized.`
+        description: `Successfully processed ${allRequirements.length} requirements and generated ${artifacts.swcs.length} SWCs with ${artifacts.runnables.length} runnables and ${artifacts.accessPoints.length} access points.`
       });
       
     } catch (error) {
@@ -193,7 +255,7 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
         setProcessingState(prev => ({ ...prev, isProcessing: false }));
       }
     }
-  }, [files, manualInput, toast, currentProject, store, processingState.error]);
+  }, [files, manualInput, toast, currentProject, addSWC, addInterface, addPort, addRunnable, addAccessPoint, addDataElement, processingState.error]);
 
   const loadSampleData = useCallback(() => {
     setManualInput(sampleRequirements);
@@ -447,7 +509,7 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
           size="lg"
         >
           <Play className="h-4 w-4 mr-2" />
-          Process Requirements & Generate Artifacts with GUI Sync
+          Process Requirements & Generate Artifacts
         </Button>
       </div>
     </div>
