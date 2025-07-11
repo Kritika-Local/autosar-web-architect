@@ -1,44 +1,199 @@
 
-import { RequirementDocument } from './requirementParser';
-import { Swc, Interface, Port, Runnable, DataElement, AccessPoint } from '@/store/autosarStore';
 import { v4 as uuidv4 } from 'uuid';
+import { RequirementDocument } from './requirementParser';
 
-interface AutosarArtifacts {
-  swcs: Omit<Swc, 'id'>[];
-  interfaces: Omit<Interface, 'id'>[];
-  ports: Array<Omit<Port, 'id'> & { swcName: string }>;
-  runnables: Array<Omit<Runnable, 'id'> & { swcName: string }>;
+// Import types from the store to ensure proper typing
+interface DataElement {
+  id: string;
+  name: string;
+  type: string;
+  category: string;
+}
+
+interface Interface {
+  id: string;
+  name: string;
+  type: 'SenderReceiver' | 'ClientServer' | 'ModeSwitch' | 'Parameter' | 'Trigger';
   dataElements: DataElement[];
-  accessPoints: Array<Omit<AccessPoint, 'id'> & { runnableName: string; swcName: string }>;
-  ecuComposition?: {
-    name: string;
-    swcInstances: Array<{ name: string; swcRef: string }>;
-  };
+  description?: string;
+}
+
+interface Swc {
+  id: string;
+  name: string;
+  category: 'Application' | 'Sensor' | 'Actuator' | 'Composition' | 'Service';
+  description?: string;
+  ports: string[];
+  runnables: string[];
+  accessPoints: string[];
+}
+
+interface Port {
+  id: string;
+  name: string;
+  direction: 'provided' | 'required';
+  interfaceRef: string;
+  swcRef: string;
+  description?: string;
+}
+
+interface Runnable {
+  id: string;
+  name: string;
+  swcRef: string;
+  runnableType: 'init' | 'periodic' | 'event';
+  period?: number;
+  description?: string;
+}
+
+interface AccessPoint {
+  id: string;
+  name: string;
+  type: 'read' | 'write' | 'call' | 'result';
+  portRef: string;
+  runnableRef: string;
+  dataElementRef: string;
+  description?: string;
+}
+
+export interface GeneratedArtifacts {
+  swcs: Swc[];
+  interfaces: Interface[];
+  ports: Port[];
+  runnables: Runnable[];
+  accessPoints: AccessPoint[];
 }
 
 export class AutosarGenerator {
-  static generateArtifacts(requirements: RequirementDocument[]): AutosarArtifacts {
-    console.log('Starting AUTOSAR artifact generation for', requirements.length, 'requirements');
+  static generateArtifacts(requirements: RequirementDocument[]): GeneratedArtifacts {
+    console.info('Starting AUTOSAR artifact generation for', requirements.length, 'requirements');
     
-    const artifacts: AutosarArtifacts = {
+    const artifacts: GeneratedArtifacts = {
       swcs: [],
       interfaces: [],
       ports: [],
       runnables: [],
-      dataElements: [],
       accessPoints: []
     };
 
-    // Process each requirement
-    for (const req of requirements) {
-      console.log(`Processing requirement: ${req.id} - ${req.shortName}`);
-      this.processRequirement(req, artifacts);
-    }
+    requirements.forEach(req => {
+      console.info('Processing requirement:', req.id, '-', req.shortName);
+      
+      // Generate SWCs
+      req.derivedElements.swcs.forEach(swcName => {
+        if (!artifacts.swcs.find(s => s.name === swcName)) {
+          const swc: Swc = {
+            id: uuidv4(),
+            name: swcName,
+            category: this.determineSWCCategory(swcName),
+            description: `Generated from requirement ${req.id}`,
+            ports: [],
+            runnables: [],
+            accessPoints: []
+          };
+          artifacts.swcs.push(swc);
+          console.info('Created SWC:', swcName);
+        }
+      });
 
-    // Generate ECU composition
-    this.generateEcuComposition(requirements, artifacts);
+      // Generate Interfaces
+      req.derivedElements.interfaces.forEach(ifaceName => {
+        if (!artifacts.interfaces.find(i => i.name === ifaceName)) {
+          const dataElements: DataElement[] = req.communication?.dataElements.map(de => ({
+            id: uuidv4(),
+            name: de.name,
+            type: de.type,
+            category: de.category || 'VALUE'
+          })) || req.derivedElements.signals.map(signal => ({
+            id: uuidv4(),
+            name: signal,
+            type: 'uint16',
+            category: 'VALUE'
+          }));
 
-    console.log('Generated artifacts:', {
+          const iface: Interface = {
+            id: uuidv4(),
+            name: ifaceName,
+            type: req.communication?.interfaceType || 'SenderReceiver',
+            dataElements,
+            description: `Generated from requirement ${req.id}`
+          };
+          artifacts.interfaces.push(iface);
+          console.info('Created Interface:', ifaceName, 'with', dataElements.length, 'data elements');
+        }
+      });
+
+      // Generate Runnables
+      req.derivedElements.runnables?.forEach(runnableName => {
+        const swcName = req.derivedElements.swcs.find(swc => runnableName.startsWith(swc));
+        if (swcName) {
+          const runnable: Runnable = {
+            id: uuidv4(),
+            name: runnableName,
+            swcRef: swcName,
+            runnableType: runnableName.includes('init') ? 'init' : 'periodic',
+            period: req.timing?.period || (runnableName.includes('init') ? undefined : 10),
+            description: `Generated from requirement ${req.id}`
+          };
+          artifacts.runnables.push(runnable);
+          console.info('Created', runnable.runnableType === 'init' ? 'Init' : 'Timing', 'Runnable:', runnableName, 
+                      runnable.runnableType === 'periodic' ? `(periodic, ${runnable.period}ms)` : '', 'for SWC:', swcName);
+        }
+      });
+
+      // Generate Ports
+      req.derivedElements.ports?.forEach((portName, index) => {
+        const swcName = req.derivedElements.swcs[index < req.derivedElements.swcs.length ? index : 0];
+        const interfaceName = req.derivedElements.interfaces[0];
+        
+        if (swcName && interfaceName) {
+          const port: Port = {
+            id: uuidv4(),
+            name: portName,
+            direction: portName.startsWith('P_') ? 'provided' : 'required',
+            interfaceRef: interfaceName,
+            swcRef: swcName,
+            description: `Generated from requirement ${req.id}`
+          };
+          artifacts.ports.push(port);
+          console.info('Created', port.direction === 'provided' ? 'P-Port' : 'R-Port', ':', portName, 
+                      port.direction === 'provided' ? 'for Sender' : 'for Receiver', 'SWC:', swcName);
+        }
+      });
+
+      // Generate Access Points
+      req.derivedElements.signals.forEach(signal => {
+        const interfaceName = req.derivedElements.interfaces[0];
+        const interface_obj = artifacts.interfaces.find(i => i.name === interfaceName);
+        const dataElement = interface_obj?.dataElements.find(de => de.name.toLowerCase().includes(signal.toLowerCase()));
+        
+        if (dataElement) {
+          req.derivedElements.swcs.forEach((swcName, swcIndex) => {
+            const runnables = artifacts.runnables.filter(r => r.swcRef === swcName && r.runnableType === 'periodic');
+            const ports = artifacts.ports.filter(p => p.swcRef === swcName);
+            
+            runnables.forEach(runnable => {
+              ports.forEach(port => {
+                const accessType = port.direction === 'provided' ? 'write' : 'read';
+                const accessPoint: AccessPoint = {
+                  id: uuidv4(),
+                  name: `Rte_${accessType === 'write' ? 'Write' : 'Read'}_${port.name}_${dataElement.name}`,
+                  type: accessType,
+                  portRef: port.id,
+                  runnableRef: runnable.id,
+                  dataElementRef: dataElement.id,
+                  description: `Generated from requirement ${req.id}`
+                };
+                artifacts.accessPoints.push(accessPoint);
+                console.info('Created', accessType === 'write' ? 'Write' : 'Read', 'Access Point:', accessPoint.name, 'for', runnable.name, 'in SWC:', swcName);
+              });
+            });
+          });
+        }
+      });
+    });
+
+    console.info('Generated artifacts:', {
       swcs: artifacts.swcs.length,
       interfaces: artifacts.interfaces.length,
       ports: artifacts.ports.length,
@@ -49,494 +204,94 @@ export class AutosarGenerator {
     return artifacts;
   }
 
-  private static processRequirement(req: RequirementDocument, artifacts: AutosarArtifacts) {
-    // Create SWCs first
-    this.createSwcs(req, artifacts);
+  static integrateArtifactsIntoStore(artifacts: GeneratedArtifacts, store: any) {
+    console.info('🚀 Starting enhanced artifacts integration with GUI synchronization...');
     
-    // Create Interfaces with <Signal>_IF naming
-    this.createInterfacesWithSignalNaming(req, artifacts);
-    
-    // Create Runnables with proper timing
-    this.createRunnablesWithTiming(req, artifacts);
-    
-    // Create Ports with P_<Signal> and R_<Signal> naming
-    this.createPortsWithSignalNaming(req, artifacts);
-    
-    // Create Access Points with Rte_ naming convention
-    this.createAccessPointsWithRteNaming(req, artifacts);
-  }
-
-  private static createSwcs(req: RequirementDocument, artifacts: AutosarArtifacts) {
-    for (const swcName of req.derivedElements.swcs) {
-      // Keep original naming for _swc components, add Controller for others
-      const fullSwcName = swcName.endsWith('_swc') ? swcName : 
-                         swcName.endsWith('Controller') ? swcName : swcName + 'Controller';
-      
-      if (!artifacts.swcs.find(s => s.name === fullSwcName)) {
-        artifacts.swcs.push({
-          name: fullSwcName,
-          description: `Software component for ${swcName.replace('Controller', '').replace('_swc', '').toLowerCase()} functionality (Generated from ${req.id})`,
-          category: this.inferSwcCategory(req.description),
-          type: 'atomic',
-          runnables: [], // Will be populated during integration
-          ports: [] // Will be populated during integration
+    try {
+      // Add interfaces first (they're referenced by ports)
+      artifacts.interfaces.forEach(iface => {
+        store.getState().interfaces.push({
+          ...iface,
+          projectId: store.getState().currentProject?.id || ''
         });
-        console.log(`Created SWC: ${fullSwcName}`);
-      }
-    }
-  }
+        console.info('✅ Created and linked Interface:', iface.name, 'with', iface.dataElements.length, 'data elements');
+      });
 
-  private static createInterfacesWithSignalNaming(req: RequirementDocument, artifacts: AutosarArtifacts) {
-    for (const interfaceName of req.derivedElements.interfaces) {
-      if (!artifacts.interfaces.find(i => i.name === interfaceName)) {
-        const dataElements = this.createDataElementsForInterface(req, interfaceName);
-        
-        artifacts.interfaces.push({
-          name: interfaceName,
-          type: req.communication?.interfaceType || 'SenderReceiver',
-          dataElements
+      // Add SWCs
+      artifacts.swcs.forEach(swc => {
+        store.getState().swcs.push({
+          ...swc,
+          projectId: store.getState().currentProject?.id || ''
         });
-        
-        artifacts.dataElements.push(...dataElements);
-        console.log(`Created Interface: ${interfaceName} with ${dataElements.length} data elements`);
-      }
-    }
-  }
+        console.info('✅ Created SWC container:', swc.name);
+      });
 
-  private static createRunnablesWithTiming(req: RequirementDocument, artifacts: AutosarArtifacts) {
-    const swcs = req.derivedElements.swcs.map(name => 
-      name.endsWith('_swc') ? name : name.endsWith('Controller') ? name : name + 'Controller'
-    );
-    
-    for (const swcName of swcs) {
-      // Create Init runnable: <swc>_init
-      const initRunnableName = `${swcName}_init`;
-      if (!artifacts.runnables.find(r => r.name === initRunnableName && r.swcName === swcName)) {
-        artifacts.runnables.push({
-          name: initRunnableName,
-          period: 0,
-          runnableType: 'init',
-          canBeInvokedConcurrently: false,
-          swcName: swcName,
-          accessPoints: [],
-          events: []
+      // Add ports
+      artifacts.ports.forEach(port => {
+        store.getState().ports.push({
+          ...port,
+          projectId: store.getState().currentProject?.id || ''
         });
-        console.log(`Created Init Runnable: ${initRunnableName} for SWC: ${swcName}`);
-      }
+      });
 
-      // Create timing-specific runnable
-      let timingRunnableName: string;
-      let period = 10; // default 10ms as per specification
-      let runnableType: 'periodic' | 'event' | 'init' = 'periodic';
-
-      if (req.timing?.type === 'periodic' && req.timing.period) {
-        period = req.timing.unit === 's' ? req.timing.period * 1000 : req.timing.period;
-        timingRunnableName = `${swcName}_${req.timing.period}${req.timing.unit || 'ms'}`;
-        runnableType = 'periodic';
-      } else if (req.timing?.type === 'event') {
-        timingRunnableName = `${swcName}_Event`;
-        runnableType = 'event';
-        period = 0;
-      } else {
-        // Default to 10ms as specified
-        timingRunnableName = `${swcName}_10ms`;
-        runnableType = 'periodic';
-        period = 10;
-      }
-
-      if (!artifacts.runnables.find(r => r.name === timingRunnableName && r.swcName === swcName)) {
-        artifacts.runnables.push({
-          name: timingRunnableName,
-          period: period,
-          runnableType: runnableType,
-          canBeInvokedConcurrently: false,
-          swcName: swcName,
-          accessPoints: [],
-          events: []
+      // Add runnables
+      artifacts.runnables.forEach(runnable => {
+        store.getState().runnables.push({
+          ...runnable,
+          projectId: store.getState().currentProject?.id || ''
         });
-        console.log(`Created Timing Runnable: ${timingRunnableName} (${runnableType}, ${period}ms) for SWC: ${swcName}`);
-      }
-    }
-  }
+      });
 
-  private static createPortsWithSignalNaming(req: RequirementDocument, artifacts: AutosarArtifacts) {
-    const swcs = req.derivedElements.swcs.map(name => 
-      name.endsWith('_swc') ? name : name.endsWith('Controller') ? name : name + 'Controller'
-    );
-    const interfaces = req.derivedElements.interfaces;
-    const signals = req.derivedElements.signals;
-    
-    if (swcs.length >= 2 && interfaces.length > 0 && signals.length > 0) {
-      const primaryInterface = interfaces[0];
-      const primarySignal = signals[0];
-      
-      // Create P_<Signal> for sender SWC (first SWC)
-      const senderSwc = swcs[0];
-      const pPortName = `P_${primarySignal}`;
-      if (!artifacts.ports.find(p => p.name === pPortName && p.swcName === senderSwc)) {
-        artifacts.ports.push({
-          name: pPortName,
-          direction: 'provided',
-          interfaceRef: primaryInterface,
-          swcName: senderSwc
+      // Add access points
+      artifacts.accessPoints.forEach(ap => {
+        store.getState().accessPoints.push({
+          ...ap,
+          projectId: store.getState().currentProject?.id || ''
         });
-        console.log(`Created P-Port: ${pPortName} for Sender SWC: ${senderSwc}`);
-      }
-      
-      // Create R_<Signal> for receiver SWC (second SWC)
-      const receiverSwc = swcs[1];
-      const rPortName = `R_${primarySignal}`;
-      if (!artifacts.ports.find(p => p.name === rPortName && p.swcName === receiverSwc)) {
-        artifacts.ports.push({
-          name: rPortName,
-          direction: 'required',
-          interfaceRef: primaryInterface,
-          swcName: receiverSwc
-        });
-        console.log(`Created R-Port: ${rPortName} for Receiver SWC: ${receiverSwc}`);
-      }
-    }
-  }
+      });
 
-  private static createAccessPointsWithRteNaming(req: RequirementDocument, artifacts: AutosarArtifacts) {
-    const swcs = req.derivedElements.swcs.map(name => 
-      name.endsWith('_swc') ? name : name.endsWith('Controller') ? name : name + 'Controller'
-    );
-    const signals = req.derivedElements.signals;
-    
-    if (swcs.length >= 2 && signals.length > 0) {
-      const primarySignal = signals[0];
-      const senderSwc = swcs[0];
-      const receiverSwc = swcs[1];
-      
-      // Find timing runnables (not init runnables)
-      const senderTimingRunnable = artifacts.runnables.find(r => 
-        r.swcName === senderSwc && r.runnableType !== 'init'
-      );
-      const receiverTimingRunnable = artifacts.runnables.find(r => 
-        r.swcName === receiverSwc && r.runnableType !== 'init'
-      );
-      
-      if (senderTimingRunnable && receiverTimingRunnable) {
-        // Create DATA-WRITE-ACCESS for sender: Rte_Write_P_<Signal>_<DataElement>
-        const writeAccessName = `Rte_Write_P_${primarySignal}_${primarySignal.toLowerCase()}`;
-        artifacts.accessPoints.push({
-          name: writeAccessName,
-          type: 'iWrite',
-          access: 'implicit',
-          swcId: '',
-          runnableId: '',
-          portRef: `P_${primarySignal}`,
-          dataElementRef: primarySignal.toLowerCase(),
-          runnableName: senderTimingRunnable.name,
-          swcName: senderSwc
-        });
-        console.log(`Created Write Access Point: ${writeAccessName} for ${senderTimingRunnable.name} in SWC: ${senderSwc}`);
-        
-        // Create DATA-READ-ACCESS for receiver: Rte_Read_R_<Signal>_<DataElement>
-        const readAccessName = `Rte_Read_R_${primarySignal}_${primarySignal.toLowerCase()}`;
-        artifacts.accessPoints.push({
-          name: readAccessName,
-          type: 'iRead',
-          access: 'implicit',
-          swcId: '',
-          runnableId: '',
-          portRef: `R_${primarySignal}`,
-          dataElementRef: primarySignal.toLowerCase(),
-          runnableName: receiverTimingRunnable.name,
-          swcName: receiverSwc
-        });
-        console.log(`Created Read Access Point: ${readAccessName} for ${receiverTimingRunnable.name} in SWC: ${receiverSwc}`);
-      }
-    }
-  }
-
-  private static createDataElementsForInterface(req: RequirementDocument, interfaceName: string): DataElement[] {
-    const dataElements: DataElement[] = [];
-    const signals = req.derivedElements.signals;
-    
-    if (req.communication?.dataElements) {
-      for (const commDataElement of req.communication.dataElements) {
-        dataElements.push({
+      // Create ECU Composition if we have SWCs
+      if (artifacts.swcs.length > 0) {
+        const ecuComposition = {
           id: uuidv4(),
-          name: commDataElement.name,
-          applicationDataTypeRef: commDataElement.type,
-          category: 'VALUE',
-          description: `Data element ${commDataElement.name} from ${req.id}`,
-          swDataDefProps: {
-            baseTypeRef: commDataElement.type,
-            implementationDataTypeRef: commDataElement.type
-          }
-        });
+          name: 'SystemECUComposition',
+          swcInstances: artifacts.swcs.map(swc => ({
+            id: uuidv4(),
+            name: swc.name + '_Instance',
+            swcRef: swc.id,
+            ecuRef: 'MainECU'
+          })),
+          projectId: store.getState().currentProject?.id || ''
+        };
+        
+        store.getState().ecuCompositions.push(ecuComposition);
+        console.info('✅ Created ECU Composition:', ecuComposition.name, 'with', ecuComposition.swcInstances.length, 'linked instances');
       }
-    }
 
-    // Create data elements based on signals
-    if (dataElements.length === 0 && signals.length > 0) {
-      for (const signal of signals) {
-        // Use signal name in lowercase for data element
-        const dataElementName = signal.toLowerCase();
-        dataElements.push({
-          id: uuidv4(),
-          name: dataElementName,
-          applicationDataTypeRef: this.inferDataType(signal),
-          category: 'VALUE',
-          description: `Data element for ${signal} signal from ${req.id}`,
-          swDataDefProps: {
-            baseTypeRef: this.inferDataType(signal),
-            implementationDataTypeRef: this.inferDataType(signal)
-          }
-        });
-      }
-    }
+      // Force store update by calling the store's update method
+      console.info('🔄 Forcing GUI synchronization across all menus...');
+      
+      // Trigger store update
+      store.setState(store.getState());
+      
+      // Also dispatch custom event for additional GUI updates
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('autosar-refresh'));
+        console.info('✅ Project refresh triggered');
+      }, 100);
 
-    // Fallback data element
-    if (dataElements.length === 0) {
-      dataElements.push({
-        id: uuidv4(),
-        name: 'dataElement',
-        applicationDataTypeRef: 'uint16',
-        category: 'VALUE',
-        description: `Default data element for ${interfaceName}`,
-        swDataDefProps: {
-          baseTypeRef: 'uint16',
-          implementationDataTypeRef: 'uint16'
-        }
-      });
+    } catch (error) {
+      console.error('❌ Error during artifacts integration:', error);
+      throw error;
     }
-
-    return dataElements;
   }
 
-  private static inferDataType(signal: string): string {
-    const signalLower = signal.toLowerCase();
-    if (signalLower.includes('temperature') || signalLower.includes('pressure')) {
-      return 'float32';
-    } else if (signalLower.includes('speed') || signalLower.includes('rpm')) {
-      return 'uint16';
-    } else if (signalLower.includes('status') || signalLower.includes('flag')) {
-      return 'boolean';
-    }
-    return 'uint16'; // Default automotive type
-  }
-
-  private static generateEcuComposition(requirements: RequirementDocument[], artifacts: AutosarArtifacts) {
-    const ecuNames = new Set<string>();
-    const swcInstances: Array<{ name: string; swcRef: string }> = [];
-
-    // Collect ECU names from requirements
-    for (const req of requirements) {
-      if (req.ecuBehavior?.ecuName) {
-        ecuNames.add(req.ecuBehavior.ecuName);
-      }
-    }
-
-    // Add all created SWCs as instances
-    for (const swc of artifacts.swcs) {
-      swcInstances.push({
-        name: swc.name + 'Instance',
-        swcRef: swc.name
-      });
-    }
-
-    const ecuName = ecuNames.size > 0 ? Array.from(ecuNames)[0] : 'SystemECU';
-    
-    artifacts.ecuComposition = {
-      name: ecuName + 'Composition',
-      swcInstances
-    };
-
-    console.log(`Created ECU Composition: ${ecuName}Composition with ${swcInstances.length} SWC instances`);
-  }
-
-  private static inferSwcCategory(description: string): Swc['category'] {
-    const desc = description.toLowerCase();
-    if (desc.includes('sensor') || desc.includes('actuator')) return 'sensor-actuator';
-    if (desc.includes('driver') || desc.includes('hardware')) return 'complex-driver';
-    if (desc.includes('service') || desc.includes('diagnostic')) return 'service';
-    if (desc.includes('abstraction') || desc.includes('layer')) return 'ecu-abstraction';
-    return 'application';
-  }
-
-  // ENHANCED: Properly integrate artifacts into the store with GUI synchronization
-  static integrateArtifactsIntoStore(artifacts: AutosarArtifacts, store: any) {
-    console.log('🚀 Starting enhanced artifacts integration with GUI synchronization...');
-    
-    // Step 1: Create interfaces first with their data elements
-    const interfaceMap = new Map<string, string>();
-    for (const interfaceData of artifacts.interfaces) {
-      const interfaceId = store.createInterface({
-        name: interfaceData.name,
-        type: interfaceData.type,
-        dataElements: interfaceData.dataElements
-      });
-      interfaceMap.set(interfaceData.name, interfaceId);
-      console.log(`✅ Created and linked Interface: ${interfaceData.name} with ${interfaceData.dataElements.length} data elements`);
-    }
-    
-    // Step 2: Create SWCs (empty containers) and track them
-    const swcMap = new Map<string, string>();
-    for (const swcData of artifacts.swcs) {
-      const swcId = store.createSWC({
-        name: swcData.name,
-        description: swcData.description,
-        category: swcData.category,
-        type: swcData.type
-      });
-      swcMap.set(swcData.name, swcId);
-      console.log(`✅ Created SWC container: ${swcData.name}`);
-    }
-    
-    // Step 3: Create runnables and properly link them to SWCs
-    const runnableMap = new Map<string, string>();
-    for (const runnableData of artifacts.runnables) {
-      const swcId = swcMap.get(runnableData.swcName);
-      if (swcId) {
-        const runnableId = store.createRunnable({
-          name: runnableData.name,
-          swcId: swcId,
-          runnableType: runnableData.runnableType,
-          period: runnableData.period,
-          canBeInvokedConcurrently: runnableData.canBeInvokedConcurrently || false,
-          events: runnableData.events || []
-        });
-        
-        // Create unique key for runnable mapping
-        const runnableKey = `${runnableData.swcName}::${runnableData.name}`;
-        runnableMap.set(runnableKey, runnableId);
-        
-        console.log(`✅ Created and linked Runnable: ${runnableData.name} to SWC: ${runnableData.swcName} with ${runnableData.runnableType} timing${runnableData.period > 0 ? ` (${runnableData.period}ms)` : ''}`);
-      }
-    }
-    
-    // Step 4: Create ports and properly link them to SWCs and interfaces
-    const portMap = new Map<string, string>();
-    for (const portData of artifacts.ports) {
-      const swcId = swcMap.get(portData.swcName);
-      const interfaceId = interfaceMap.get(portData.interfaceRef);
-      
-      if (swcId && interfaceId) {
-        const portId = store.createPort({
-          name: portData.name,
-          direction: portData.direction,
-          interfaceRef: interfaceId,
-          swcId: swcId
-        });
-        
-        // Create unique key for port mapping
-        const portKey = `${portData.swcName}::${portData.name}`;
-        portMap.set(portKey, portId);
-        
-        console.log(`✅ Created and linked Port: ${portData.name} (${portData.direction}) to SWC: ${portData.swcName} via Interface: ${portData.interfaceRef}`);
-      }
-    }
-    
-    // Step 5: Create access points and link them to runnables, ports, and data elements
-    for (const apData of artifacts.accessPoints) {
-      const swcId = swcMap.get(apData.swcName);
-      const runnableKey = `${apData.swcName}::${apData.runnableName}`;
-      const runnableId = runnableMap.get(runnableKey);
-      const portKey = `${apData.swcName}::${apData.portRef}`;
-      const portId = portMap.get(portKey);
-      
-      if (swcId && runnableId) {
-        const accessPointId = store.addAccessPoint(runnableId, {
-          name: apData.name,
-          type: apData.type,
-          access: apData.access,
-          swcId: swcId,
-          runnableId: runnableId,
-          portRef: apData.portRef,
-          dataElementRef: apData.dataElementRef
-        });
-        
-        console.log(`✅ Created and linked Access Point: ${apData.name} to Runnable: ${apData.runnableName} in SWC: ${apData.swcName}`);
-        console.log(`   └─ Port: ${apData.portRef}, Data Element: ${apData.dataElementRef}`);
-      }
-    }
-    
-    // Step 6: Create ECU Composition and add SWC instances with proper linking
-    if (artifacts.ecuComposition) {
-      const compositionId = store.createECUComposition({
-        name: artifacts.ecuComposition.name,
-        description: `Auto-generated ECU Composition with ${artifacts.swcs.length} linked SWCs`,
-        ecuType: 'ApplicationECU',
-        autosarVersion: '4.2.2'
-      });
-      
-      // Add SWC instances to the composition with proper references
-      for (const instance of artifacts.ecuComposition.swcInstances) {
-        const swcId = swcMap.get(instance.swcRef);
-        if (swcId) {
-          store.addSWCInstance(compositionId, {
-            name: instance.name,
-            swcRef: swcId,
-            instanceName: instance.name,
-            ecuCompositionId: compositionId
-          });
-          console.log(`✅ Added SWC Instance: ${instance.name} to ECU Composition with proper linking`);
-        }
-      }
-      
-      console.log(`✅ Created ECU Composition: ${artifacts.ecuComposition.name} with ${artifacts.ecuComposition.swcInstances.length} linked instances`);
-    }
-    
-    // Step 7: CRITICAL - Force GUI refresh and synchronization
-    console.log('🔄 Forcing GUI synchronization across all menus...');
-    
-    // Force store refresh to update all subscribers
-    if (store.refreshProject) {
-      store.refreshProject();
-      console.log('✅ Project refresh triggered');
-    }
-    
-    // Force state update to trigger re-renders
-    if (store.forceUpdate) {
-      store.forceUpdate();
-      console.log('✅ Force update triggered');
-    }
-    
-    // Trigger a state change to force all components to re-render
-    store.setState((state: any) => ({
-      ...state,
-      lastUpdated: Date.now()
-    }));
-    
-    // Step 8: Final verification and linking summary with GUI counts
-    console.log('\n🔗 GUI SYNCHRONIZATION VERIFICATION:');
-    console.log('====================================');
-    
-    // Verify SWC Builder counts
-    artifacts.swcs.forEach(swc => {
-      const swcPorts = artifacts.ports.filter(p => p.swcName === swc.name);
-      const swcRunnables = artifacts.runnables.filter(r => r.swcName === swc.name);
-      const swcAccessPoints = artifacts.accessPoints.filter(ap => ap.swcName === swc.name);
-      
-      console.log(`📦 SWC Builder - ${swc.name}:`);
-      console.log(`   ├─ GUI Ports Count: ${swcPorts.length} (${swcPorts.map(p => `${p.name}[${p.direction}]`).join(', ')})`);
-      console.log(`   ├─ GUI Runnables Count: ${swcRunnables.length} (${swcRunnables.map(r => `${r.name}[${r.runnableType}${r.period > 0 ? `:${r.period}ms` : ''}]`).join(', ')})`);
-      console.log(`   └─ GUI Access Points Count: ${swcAccessPoints.length} (${swcAccessPoints.map(ap => `${ap.name}[${ap.type}]`).join(', ')})`);
-    });
-    
-    // Verify Behavior Designer runnable mapping
-    console.log('\n🎯 Behavior Designer - Runnable Mapping:');
-    artifacts.runnables.forEach(runnable => {
-      const runnableAccessPoints = artifacts.accessPoints.filter(ap => ap.runnableName === runnable.name);
-      console.log(`⚡ ${runnable.swcName} → ${runnable.name} (${runnable.runnableType}${runnable.period > 0 ? `, ${runnable.period}ms` : ''})`);
-      console.log(`   └─ Access Points: ${runnableAccessPoints.length} (${runnableAccessPoints.map(ap => ap.name).join(', ')})`);
-    });
-    
-    // Verify Port & Interface Editor linking
-    console.log('\n🔌 Port & Interface Editor - Linking:');
-    artifacts.interfaces.forEach(iface => {
-      const linkedPorts = artifacts.ports.filter(p => p.interfaceRef === iface.name);
-      console.log(`🔗 Interface: ${iface.name} (${iface.type})`);
-      console.log(`   ├─ Data Elements: ${iface.dataElements.length} (${iface.dataElements.map(de => de.name).join(', ')})`);
-      console.log(`   └─ Linked Ports: ${linkedPorts.length} (${linkedPorts.map(p => `${p.name}[${p.direction}]@${p.swcName}`).join(', ')})`);
-    });
-    
-    console.log('\n✅ Enhanced artifacts integration with GUI synchronization completed!');
-    console.log(`📊 Final GUI counts: ${artifacts.swcs.length} SWCs, ${artifacts.interfaces.length} Interfaces, ${artifacts.ports.length} Ports, ${artifacts.runnables.length} Runnables, ${artifacts.accessPoints.length} Access Points`);
-    console.log('🎯 All menus should now reflect the generated artifacts with proper linking!');
+  private static determineSWCCategory(swcName: string): 'Application' | 'Sensor' | 'Actuator' | 'Composition' | 'Service' {
+    const name = swcName.toLowerCase();
+    if (name.includes('sensor')) return 'Sensor';
+    if (name.includes('actuator') || name.includes('injector')) return 'Actuator';
+    if (name.includes('composition')) return 'Composition';
+    if (name.includes('service')) return 'Service';
+    return 'Application';
   }
 }
