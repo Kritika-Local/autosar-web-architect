@@ -207,6 +207,11 @@ export class AutosarGenerator {
     console.info('🚀 Starting enhanced artifacts integration with GUI synchronization...');
     
     try {
+      // Validate store hook and its properties
+      if (!storeHook) {
+        throw new Error('Store hook is undefined');
+      }
+
       // Get the current project ID
       const currentProjectId = storeHook.currentProject?.id || '';
       
@@ -214,64 +219,114 @@ export class AutosarGenerator {
         console.warn('⚠️ No current project found, using empty project ID');
       }
 
+      // Initialize arrays if they don't exist
+      if (!Array.isArray(storeHook.interfaces)) {
+        console.warn('Initializing interfaces array');
+        storeHook.interfaces = [];
+      }
+      if (!Array.isArray(storeHook.swcs)) {
+        console.warn('Initializing swcs array');
+        storeHook.swcs = [];
+      }
+      if (!Array.isArray(storeHook.ports)) {
+        console.warn('Initializing ports array');
+        storeHook.ports = [];
+      }
+      if (!Array.isArray(storeHook.runnables)) {
+        console.warn('Initializing runnables array');
+        storeHook.runnables = [];
+      }
+      if (!Array.isArray(storeHook.accessPoints)) {
+        console.warn('Initializing accessPoints array');
+        storeHook.accessPoints = [];
+      }
+      if (!Array.isArray(storeHook.ecuCompositions)) {
+        console.warn('Initializing ecuCompositions array');
+        storeHook.ecuCompositions = [];
+      }
+
       // Add interfaces first (they're referenced by ports)
       artifacts.interfaces.forEach(iface => {
-        storeHook.interfaces.push({
-          ...iface,
-          projectId: currentProjectId
-        });
-        console.info('✅ Created and linked Interface:', iface.name, 'with', iface.dataElements.length, 'data elements');
+        try {
+          storeHook.interfaces.push({
+            ...iface,
+            projectId: currentProjectId
+          });
+          console.info('✅ Created and linked Interface:', iface.name, 'with', iface.dataElements.length, 'data elements');
+        } catch (error) {
+          console.error('Failed to add interface:', iface.name, error);
+        }
       });
 
       // Add SWCs
       artifacts.swcs.forEach(swc => {
-        storeHook.swcs.push({
-          ...swc,
-          projectId: currentProjectId
-        });
-        console.info('✅ Created SWC container:', swc.name);
+        try {
+          storeHook.swcs.push({
+            ...swc,
+            projectId: currentProjectId
+          });
+          console.info('✅ Created SWC container:', swc.name);
+        } catch (error) {
+          console.error('Failed to add SWC:', swc.name, error);
+        }
       });
 
       // Add ports
       artifacts.ports.forEach(port => {
-        storeHook.ports.push({
-          ...port,
-          projectId: currentProjectId
-        });
+        try {
+          storeHook.ports.push({
+            ...port,
+            projectId: currentProjectId
+          });
+        } catch (error) {
+          console.error('Failed to add port:', port.name, error);
+        }
       });
 
       // Add runnables
       artifacts.runnables.forEach(runnable => {
-        storeHook.runnables.push({
-          ...runnable,
-          projectId: currentProjectId
-        });
+        try {
+          storeHook.runnables.push({
+            ...runnable,
+            projectId: currentProjectId
+          });
+        } catch (error) {
+          console.error('Failed to add runnable:', runnable.name, error);
+        }
       });
 
       // Add access points
       artifacts.accessPoints.forEach(ap => {
-        storeHook.accessPoints.push({
-          ...ap,
-          projectId: currentProjectId
-        });
+        try {
+          storeHook.accessPoints.push({
+            ...ap,
+            projectId: currentProjectId
+          });
+        } catch (error) {
+          console.error('Failed to add access point:', ap.name, error);
+        }
       });
 
       // Create ECU Composition if we have SWCs
       if (artifacts.swcs.length > 0) {
-        const ecuComposition = {
-          id: uuidv4(),
-          name: 'SystemECUComposition',
-          swcInstances: artifacts.swcs.map(swc => ({
+        try {
+          const ecuComposition = {
             id: uuidv4(),
-            name: swc.name + '_Instance',
-            swcRef: swc.id,
-            ecuRef: 'MainECU'
-          })),
-          projectId: currentProjectId
-        };
-        
-        storeHook.ecuCompositions.push(ecuComposition);
-        console.info('✅ Created ECU Composition:', ecuComposition.name, 'with', ecuComposition.swcInstances.length, 'linked instances');
+            name: 'SystemECUComposition',
+            swcInstances: artifacts.swcs.map(swc => ({
+              id: uuidv4(),
+              name: swc.name + '_Instance',
+              swcRef: swc.id,
+              ecuRef: 'MainECU'
+            })),
+            projectId: currentProjectId
+          };
+          
+          storeHook.ecuCompositions.push(ecuComposition);
+          console.info('✅ Created ECU Composition:', ecuComposition.name, 'with', ecuComposition.swcInstances.length, 'linked instances');
+        } catch (error) {
+          console.error('Failed to create ECU composition:', error);
+        }
       }
 
       console.info('🔄 Forcing GUI synchronization across all menus...');

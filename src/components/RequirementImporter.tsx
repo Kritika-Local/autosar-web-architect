@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -101,6 +102,19 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
       return;
     }
 
+    console.info('🚀 Starting requirement processing...');
+    console.info('Store state check:', {
+      hasCurrentProject: !!store.currentProject,
+      projectId: store.currentProject?.id,
+      storeArrays: {
+        interfaces: Array.isArray(store.interfaces) ? store.interfaces.length : 'not array',
+        swcs: Array.isArray(store.swcs) ? store.swcs.length : 'not array',
+        ports: Array.isArray(store.ports) ? store.ports.length : 'not array',
+        runnables: Array.isArray(store.runnables) ? store.runnables.length : 'not array',
+        accessPoints: Array.isArray(store.accessPoints) ? store.accessPoints.length : 'not array'
+      }
+    });
+
     setProcessingState({
       isProcessing: true,
       progress: 0,
@@ -114,8 +128,11 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
       let allRequirements: RequirementDocument[] = [];
 
       if (files.length > 0) {
+        console.info('Processing', files.length, 'files...');
         for (const file of files) {
+          console.info('Parsing file:', file.name);
           const parsed = await RequirementParser.parseFile(file);
+          console.info('Parsed', parsed.length, 'requirements from', file.name);
           allRequirements.push(...parsed);
         }
       }
@@ -123,19 +140,36 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
       // Step 2: Parse manual input
       if (manualInput.trim()) {
         setProcessingState(prev => ({ ...prev, progress: 40, currentStep: 'Parsing manual input...' }));
+        console.info('Parsing manual input...');
         const manualParsed = RequirementParser.parseText(manualInput);
+        console.info('Parsed', manualParsed.length, 'requirements from manual input');
         allRequirements.push(...manualParsed);
+      }
+
+      console.info('Total requirements parsed:', allRequirements.length);
+
+      if (allRequirements.length === 0) {
+        throw new Error('No requirements were successfully parsed from the input');
       }
 
       // Step 3: Generate artifacts
       setProcessingState(prev => ({ ...prev, progress: 60, currentStep: 'Generating AUTOSAR artifacts...' }));
+      console.info('Generating AUTOSAR artifacts...');
       const artifacts = AutosarGenerator.generateArtifacts(allRequirements);
+      console.info('Generated artifacts:', {
+        swcs: artifacts.swcs.length,
+        interfaces: artifacts.interfaces.length,
+        ports: artifacts.ports.length,
+        runnables: artifacts.runnables.length,
+        accessPoints: artifacts.accessPoints.length
+      });
       
       // Step 4: Integrate artifacts
       setProcessingState(prev => ({ ...prev, progress: 80, currentStep: 'Integrating into project...' }));
+      console.info('Integrating artifacts into store...');
       AutosarGenerator.integrateArtifactsIntoStore(artifacts, store);
 
-      // Step 5: Create preview by looking up SWC names from the store
+      // Step 5: Create preview
       setProcessingState(prev => ({ ...prev, progress: 90, currentStep: 'Creating preview...' }));
       
       const preview: GenerationPreview = {
@@ -183,6 +217,7 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
       
     } catch (error) {
       console.error('Processing error:', error);
+      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
       setProcessingState(prev => ({ 
         ...prev, 
         error: error instanceof Error ? error.message : 'Unknown error occurred',
@@ -191,7 +226,7 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
       
       toast({
         title: "Processing Failed",
-        description: "Failed to process requirements. Please check your input and try again.",
+        description: `Failed to process requirements: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variant: "destructive"
       });
     } finally {
