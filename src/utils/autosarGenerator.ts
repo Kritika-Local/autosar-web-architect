@@ -52,17 +52,17 @@ export class AutosarGenerator {
     // Create SWCs first
     this.createSwcs(req, artifacts);
     
-    // Create Interfaces
-    this.createInterfaces(req, artifacts);
+    // Create Interfaces with <Signal>_IF naming
+    this.createInterfacesWithSignalNaming(req, artifacts);
     
-    // Create Runnables (mapped to SWCs)
-    this.createRunnables(req, artifacts);
+    // Create Runnables with proper timing
+    this.createRunnablesWithTiming(req, artifacts);
     
-    // Create Ports with proper P-Port/R-Port logic
-    this.createPorts(req, artifacts);
+    // Create Ports with P_<Signal> and R_<Signal> naming
+    this.createPortsWithSignalNaming(req, artifacts);
     
-    // Create Access Points (mapped to Runnables)
-    this.createAccessPoints(req, artifacts);
+    // Create Access Points with Rte_ naming convention
+    this.createAccessPointsWithRteNaming(req, artifacts);
   }
 
   private static createSwcs(req: RequirementDocument, artifacts: AutosarArtifacts) {
@@ -85,63 +85,7 @@ export class AutosarGenerator {
     }
   }
 
-  private static createRunnables(req: RequirementDocument, artifacts: AutosarArtifacts) {
-    const swcs = req.derivedElements.swcs.map(name => 
-      name.endsWith('_swc') ? name : name.endsWith('Controller') ? name : name + 'Controller'
-    );
-    
-    for (const swcName of swcs) {
-      // Create Init runnable
-      const initRunnableName = `${swcName}_init`;
-      if (!artifacts.runnables.find(r => r.name === initRunnableName && r.swcName === swcName)) {
-        const initRunnable = {
-          name: initRunnableName,
-          period: 0,
-          runnableType: 'init' as const,
-          canBeInvokedConcurrently: false,
-          swcName: swcName,
-          accessPoints: [], // Will be populated during integration
-          events: []
-        };
-        artifacts.runnables.push(initRunnable);
-        console.log(`Created Init Runnable: ${initRunnableName} for SWC: ${swcName}`);
-      }
-
-      // Create main runnable based on timing
-      let mainRunnableName: string;
-      let period = 100; // default 100ms
-      let runnableType: 'periodic' | 'event' | 'init' = 'periodic';
-
-      if (req.timing?.type === 'periodic' && req.timing.period) {
-        period = req.timing.unit === 's' ? req.timing.period * 1000 : req.timing.period;
-        mainRunnableName = `${swcName}_${req.timing.period}${req.timing.unit || 'ms'}`;
-        runnableType = 'periodic';
-      } else if (req.timing?.type === 'event') {
-        mainRunnableName = `${swcName}_Event`;
-        runnableType = 'event';
-        period = 0;
-      } else {
-        mainRunnableName = `${swcName}_main`;
-        runnableType = 'periodic';
-      }
-
-      if (!artifacts.runnables.find(r => r.name === mainRunnableName && r.swcName === swcName)) {
-        const mainRunnable = {
-          name: mainRunnableName,
-          period: period,
-          runnableType: runnableType,
-          canBeInvokedConcurrently: false,
-          swcName: swcName,
-          accessPoints: [], // Will be populated during integration
-          events: []
-        };
-        artifacts.runnables.push(mainRunnable);
-        console.log(`Created Main Runnable: ${mainRunnableName} (${runnableType}, ${period}ms) for SWC: ${swcName}`);
-      }
-    }
-  }
-
-  private static createInterfaces(req: RequirementDocument, artifacts: AutosarArtifacts) {
+  private static createInterfacesWithSignalNaming(req: RequirementDocument, artifacts: AutosarArtifacts) {
     for (const interfaceName of req.derivedElements.interfaces) {
       if (!artifacts.interfaces.find(i => i.name === interfaceName)) {
         const dataElements = this.createDataElementsForInterface(req, interfaceName);
@@ -158,8 +102,157 @@ export class AutosarGenerator {
     }
   }
 
+  private static createRunnablesWithTiming(req: RequirementDocument, artifacts: AutosarArtifacts) {
+    const swcs = req.derivedElements.swcs.map(name => 
+      name.endsWith('_swc') ? name : name.endsWith('Controller') ? name : name + 'Controller'
+    );
+    
+    for (const swcName of swcs) {
+      // Create Init runnable: <swc>_init
+      const initRunnableName = `${swcName}_init`;
+      if (!artifacts.runnables.find(r => r.name === initRunnableName && r.swcName === swcName)) {
+        artifacts.runnables.push({
+          name: initRunnableName,
+          period: 0,
+          runnableType: 'init',
+          canBeInvokedConcurrently: false,
+          swcName: swcName,
+          accessPoints: [],
+          events: []
+        });
+        console.log(`Created Init Runnable: ${initRunnableName} for SWC: ${swcName}`);
+      }
+
+      // Create timing-specific runnable
+      let timingRunnableName: string;
+      let period = 10; // default 10ms as per specification
+      let runnableType: 'periodic' | 'event' | 'init' = 'periodic';
+
+      if (req.timing?.type === 'periodic' && req.timing.period) {
+        period = req.timing.unit === 's' ? req.timing.period * 1000 : req.timing.period;
+        timingRunnableName = `${swcName}_${req.timing.period}${req.timing.unit || 'ms'}`;
+        runnableType = 'periodic';
+      } else if (req.timing?.type === 'event') {
+        timingRunnableName = `${swcName}_Event`;
+        runnableType = 'event';
+        period = 0;
+      } else {
+        // Default to 10ms as specified
+        timingRunnableName = `${swcName}_10ms`;
+        runnableType = 'periodic';
+        period = 10;
+      }
+
+      if (!artifacts.runnables.find(r => r.name === timingRunnableName && r.swcName === swcName)) {
+        artifacts.runnables.push({
+          name: timingRunnableName,
+          period: period,
+          runnableType: runnableType,
+          canBeInvokedConcurrently: false,
+          swcName: swcName,
+          accessPoints: [],
+          events: []
+        });
+        console.log(`Created Timing Runnable: ${timingRunnableName} (${runnableType}, ${period}ms) for SWC: ${swcName}`);
+      }
+    }
+  }
+
+  private static createPortsWithSignalNaming(req: RequirementDocument, artifacts: AutosarArtifacts) {
+    const swcs = req.derivedElements.swcs.map(name => 
+      name.endsWith('_swc') ? name : name.endsWith('Controller') ? name : name + 'Controller'
+    );
+    const interfaces = req.derivedElements.interfaces;
+    const signals = req.derivedElements.signals;
+    
+    if (swcs.length >= 2 && interfaces.length > 0 && signals.length > 0) {
+      const primaryInterface = interfaces[0];
+      const primarySignal = signals[0];
+      
+      // Create P_<Signal> for sender SWC (first SWC)
+      const senderSwc = swcs[0];
+      const pPortName = `P_${primarySignal}`;
+      if (!artifacts.ports.find(p => p.name === pPortName && p.swcName === senderSwc)) {
+        artifacts.ports.push({
+          name: pPortName,
+          direction: 'provided',
+          interfaceRef: primaryInterface,
+          swcName: senderSwc
+        });
+        console.log(`Created P-Port: ${pPortName} for Sender SWC: ${senderSwc}`);
+      }
+      
+      // Create R_<Signal> for receiver SWC (second SWC)
+      const receiverSwc = swcs[1];
+      const rPortName = `R_${primarySignal}`;
+      if (!artifacts.ports.find(p => p.name === rPortName && p.swcName === receiverSwc)) {
+        artifacts.ports.push({
+          name: rPortName,
+          direction: 'required',
+          interfaceRef: primaryInterface,
+          swcName: receiverSwc
+        });
+        console.log(`Created R-Port: ${rPortName} for Receiver SWC: ${receiverSwc}`);
+      }
+    }
+  }
+
+  private static createAccessPointsWithRteNaming(req: RequirementDocument, artifacts: AutosarArtifacts) {
+    const swcs = req.derivedElements.swcs.map(name => 
+      name.endsWith('_swc') ? name : name.endsWith('Controller') ? name : name + 'Controller'
+    );
+    const signals = req.derivedElements.signals;
+    
+    if (swcs.length >= 2 && signals.length > 0) {
+      const primarySignal = signals[0];
+      const senderSwc = swcs[0];
+      const receiverSwc = swcs[1];
+      
+      // Find timing runnables (not init runnables)
+      const senderTimingRunnable = artifacts.runnables.find(r => 
+        r.swcName === senderSwc && r.runnableType !== 'init'
+      );
+      const receiverTimingRunnable = artifacts.runnables.find(r => 
+        r.swcName === receiverSwc && r.runnableType !== 'init'
+      );
+      
+      if (senderTimingRunnable && receiverTimingRunnable) {
+        // Create DATA-WRITE-ACCESS for sender: Rte_Write_P_<Signal>_<DataElement>
+        const writeAccessName = `Rte_Write_P_${primarySignal}_${primarySignal.toLowerCase()}`;
+        artifacts.accessPoints.push({
+          name: writeAccessName,
+          type: 'iWrite',
+          access: 'implicit',
+          swcId: '',
+          runnableId: '',
+          portRef: `P_${primarySignal}`,
+          dataElementRef: primarySignal.toLowerCase(),
+          runnableName: senderTimingRunnable.name,
+          swcName: senderSwc
+        });
+        console.log(`Created Write Access Point: ${writeAccessName} for ${senderTimingRunnable.name} in SWC: ${senderSwc}`);
+        
+        // Create DATA-READ-ACCESS for receiver: Rte_Read_R_<Signal>_<DataElement>
+        const readAccessName = `Rte_Read_R_${primarySignal}_${primarySignal.toLowerCase()}`;
+        artifacts.accessPoints.push({
+          name: readAccessName,
+          type: 'iRead',
+          access: 'implicit',
+          swcId: '',
+          runnableId: '',
+          portRef: `R_${primarySignal}`,
+          dataElementRef: primarySignal.toLowerCase(),
+          runnableName: receiverTimingRunnable.name,
+          swcName: receiverSwc
+        });
+        console.log(`Created Read Access Point: ${readAccessName} for ${receiverTimingRunnable.name} in SWC: ${receiverSwc}`);
+      }
+    }
+  }
+
   private static createDataElementsForInterface(req: RequirementDocument, interfaceName: string): DataElement[] {
     const dataElements: DataElement[] = [];
+    const signals = req.derivedElements.signals;
     
     if (req.communication?.dataElements) {
       for (const commDataElement of req.communication.dataElements) {
@@ -177,18 +270,20 @@ export class AutosarGenerator {
       }
     }
 
-    // Ensure at least one data element based on signals
-    if (dataElements.length === 0 && req.derivedElements.signals.length > 0) {
-      for (const signal of req.derivedElements.signals) {
+    // Create data elements based on signals
+    if (dataElements.length === 0 && signals.length > 0) {
+      for (const signal of signals) {
+        // Use signal name in lowercase for data element
+        const dataElementName = signal.toLowerCase();
         dataElements.push({
           id: uuidv4(),
-          name: signal,
-          applicationDataTypeRef: 'uint16', // Default automotive type
+          name: dataElementName,
+          applicationDataTypeRef: this.inferDataType(signal),
           category: 'VALUE',
           description: `Data element for ${signal} signal from ${req.id}`,
           swDataDefProps: {
-            baseTypeRef: 'uint16',
-            implementationDataTypeRef: 'uint16'
+            baseTypeRef: this.inferDataType(signal),
+            implementationDataTypeRef: this.inferDataType(signal)
           }
         });
       }
@@ -198,7 +293,7 @@ export class AutosarGenerator {
     if (dataElements.length === 0) {
       dataElements.push({
         id: uuidv4(),
-        name: 'DataElement',
+        name: 'dataElement',
         applicationDataTypeRef: 'uint16',
         category: 'VALUE',
         description: `Default data element for ${interfaceName}`,
@@ -212,125 +307,16 @@ export class AutosarGenerator {
     return dataElements;
   }
 
-  private static createPorts(req: RequirementDocument, artifacts: AutosarArtifacts) {
-    const swcs = req.derivedElements.swcs.map(name => 
-      name.endsWith('_swc') ? name : name.endsWith('Controller') ? name : name + 'Controller'
-    );
-    const interfaces = req.derivedElements.interfaces;
-    
-    if (swcs.length >= 1 && interfaces.length > 0) {
-      const primaryInterface = interfaces[0];
-      
-      for (const swcName of swcs) {
-        // FIXED: Proper P-Port/R-Port logic based on SWC type
-        let shouldCreatePPort = false;
-        let shouldCreateRPort = false;
-        
-        // Sensor SWCs create P-Ports (they provide data)
-        if (swcName.toLowerCase().includes('sensor')) {
-          shouldCreatePPort = true;
-          console.log(`${swcName} is a sensor - creating P-Port (provider)`);
-        }
-        
-        // EMS/Engine/Controller SWCs create R-Ports (they require data)
-        if (swcName.toLowerCase().includes('ems') || 
-            swcName.toLowerCase().includes('engine') || 
-            swcName.toLowerCase().includes('controller')) {
-          shouldCreateRPort = true;
-          console.log(`${swcName} is an EMS/Controller - creating R-Port (requirer)`);
-        }
-        
-        // Default behavior for other SWCs
-        if (!shouldCreatePPort && !shouldCreateRPort) {
-          // Create both ports for general SWCs
-          shouldCreatePPort = true;
-          shouldCreateRPort = true;
-        }
-        
-        // Create P-Port if needed
-        if (shouldCreatePPort) {
-          const providedPortName = `${swcName.replace('_swc', '').replace('Controller', '')}_PPort`;
-          if (!artifacts.ports.find(p => p.name === providedPortName && p.swcName === swcName)) {
-            artifacts.ports.push({
-              name: providedPortName,
-              direction: 'provided',
-              interfaceRef: primaryInterface,
-              swcName: swcName
-            });
-            console.log(`Created P-Port: ${providedPortName} for SWC: ${swcName}`);
-          }
-        }
-        
-        // Create R-Port if needed
-        if (shouldCreateRPort) {
-          const requiredPortName = `${swcName.replace('_swc', '').replace('Controller', '')}_RPort`;
-          if (!artifacts.ports.find(p => p.name === requiredPortName && p.swcName === swcName)) {
-            artifacts.ports.push({
-              name: requiredPortName,
-              direction: 'required',
-              interfaceRef: primaryInterface,
-              swcName: swcName
-            });
-            console.log(`Created R-Port: ${requiredPortName} for SWC: ${swcName}`);
-          }
-        }
-      }
+  private static inferDataType(signal: string): string {
+    const signalLower = signal.toLowerCase();
+    if (signalLower.includes('temperature') || signalLower.includes('pressure')) {
+      return 'float32';
+    } else if (signalLower.includes('speed') || signalLower.includes('rpm')) {
+      return 'uint16';
+    } else if (signalLower.includes('status') || signalLower.includes('flag')) {
+      return 'boolean';
     }
-  }
-
-  private static createAccessPoints(req: RequirementDocument, artifacts: AutosarArtifacts) {
-    const swcs = req.derivedElements.swcs.map(name => 
-      name.endsWith('_swc') ? name : name.endsWith('Controller') ? name : name + 'Controller'
-    );
-    
-    // Only create access points for main runnables (not init)
-    const mainRunnables = artifacts.runnables.filter(r => r.runnableType !== 'init');
-    
-    for (const swcName of swcs) {
-      const swcPorts = artifacts.ports.filter(p => p.swcName === swcName);
-      const swcMainRunnables = mainRunnables.filter(r => r.swcName === swcName);
-      
-      for (const runnable of swcMainRunnables) {
-        for (const port of swcPorts) {
-          const interface_ = artifacts.interfaces.find(i => i.name === port.interfaceRef);
-          if (!interface_) continue;
-          
-          const dataElement = interface_.dataElements[0]; // Use first data element
-          if (!dataElement) continue;
-          
-          let accessType: 'iRead' | 'iWrite' | 'iCall';
-          let accessName: string;
-          
-          if (port.direction === 'provided') {
-            accessType = 'iWrite';
-            accessName = `Rte_IWrite_${runnable.name}_${port.name}_${dataElement.name}`;
-          } else {
-            accessType = 'iRead';
-            accessName = `Rte_IRead_${runnable.name}_${port.name}_${dataElement.name}`;
-          }
-          
-          // Check if access point already exists
-          const existingAp = artifacts.accessPoints.find(ap => 
-            ap.name === accessName && ap.runnableName === runnable.name && ap.swcName === swcName
-          );
-          
-          if (!existingAp) {
-            artifacts.accessPoints.push({
-              name: accessName,
-              type: accessType,
-              access: 'implicit',
-              swcId: '', // Will be set when creating
-              runnableId: '', // Will be set when creating
-              portRef: port.name,
-              dataElementRef: dataElement.name,
-              runnableName: runnable.name,
-              swcName: swcName
-            });
-            console.log(`Created Access Point: ${accessName} for ${runnable.name} (${accessType}) in SWC: ${swcName}`);
-          }
-        }
-      }
-    }
+    return 'uint16'; // Default automotive type
   }
 
   private static generateEcuComposition(requirements: RequirementDocument[], artifacts: AutosarArtifacts) {

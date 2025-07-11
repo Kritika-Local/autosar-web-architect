@@ -1,4 +1,3 @@
-
 import * as XLSX from 'xlsx';
 
 export interface RequirementDocument {
@@ -114,11 +113,12 @@ export class RequirementParser {
     // Extract SWC names with enhanced patterns
     const swcs = this.extractSwcs(line);
     
-    // Extract interfaces with enhanced naming
-    const interfaces = this.extractInterfaces(line, swcs);
-    
-    // Extract signals/data elements
+    // Extract the signal/data element name for interface naming
     const signals = this.extractSignals(line);
+    const primarySignal = signals[0] || 'Data';
+    
+    // Create interface name as <Signal>_IF as per specification
+    const interfaces = [`${primarySignal}_IF`];
     
     // Extract communication info
     const communication = this.extractCommunication(line);
@@ -129,12 +129,14 @@ export class RequirementParser {
     // Extract ECU behavior
     const ecuBehavior = this.extractEcuBehavior(line);
     
-    // Generate ports and runnables based on extracted data
-    const ports = this.generatePorts(swcs, interfaces);
-    const runnables = this.generateRunnables(swcs, timing);
+    // Generate ports based on specification: P_<Signal> and R_<Signal>
+    const ports = this.generatePortsWithSignalNaming(swcs, primarySignal);
+    
+    // Generate runnables: <swc>_init and <swc>_<timing> for each SWC
+    const runnables = this.generateRunnablesWithTiming(swcs, timing);
     
     // Only create requirement if we found meaningful data
-    if (swcs.length === 0 && interfaces.length === 0 && signals.length === 0) {
+    if (swcs.length === 0 && signals.length === 0) {
       return null;
     }
 
@@ -220,68 +222,29 @@ export class RequirementParser {
     return swcs;
   }
 
-  private static extractInterfaces(text: string, swcs: string[]): string[] {
-    const interfaces: string[] = [];
-    
-    // Enhanced interface naming based on SWCs
-    if (swcs.length >= 2) {
-      // Create interface name from sender and receiver SWCs
-      const senderSwc = swcs[0].replace('_swc', '').replace('Controller', '');
-      const receiverSwc = swcs[1].replace('_swc', '').replace('Controller', '');
-      const interfaceName = `${senderSwc}_${receiverSwc}_portinterface`;
-      interfaces.push(interfaceName);
-    }
-    
-    // Standard interface patterns
-    const interfacePatterns = [
-      /(\w+)\s+interface/gi,
-      /via\s+(\w+)/gi,
-      /using\s+(\w+)\s+interface/gi,
-      /(\w+)Interface/gi,
-      /(\w+)_portinterface/gi
-    ];
-    
-    interfacePatterns.forEach(pattern => {
-      const matches = text.matchAll(pattern);
-      for (const match of matches) {
-        if (match[1] && match[1].length > 2 && !match[1].toLowerCase().includes('sender') && !match[1].toLowerCase().includes('receiver')) {
-          const interfaceName = match[1].includes('_portinterface') ? match[1] : match[1] + 'Interface';
-          if (!interfaces.includes(interfaceName)) {
-            interfaces.push(interfaceName);
-          }
-        }
-      }
-    });
-    
-    // Default interface if none found but communication is detected
-    if (interfaces.length === 0 && (text.toLowerCase().includes('send') || text.toLowerCase().includes('receive'))) {
-      interfaces.push('DefaultInterface');
-    }
-    
-    return interfaces;
-  }
-
   private static extractSignals(text: string): string[] {
     const signals: string[] = [];
     
-    // Enhanced signal patterns
+    // Enhanced signal patterns with better extraction
     const signalPatterns = [
-      /(\w+)\s+signal/gi,
-      /send\s+(?:a\s+)?(\w+)(?:\s+value)?/gi,
-      /receive\s+(?:a\s+)?(\w+)(?:\s+value)?/gi,
-      /(\w+)\s+data/gi,
-      /(\w+)\s+value/gi,
-      // Specific value types
-      /(?:temperature|pressure|speed|voltage|current)\s+value/gi,
-      /(temperature|pressure|speed|voltage|current)/gi
+      // Direct signal mentions: "send temperature", "receive pressure"
+      /(?:send|transmit|provide)\s+(?:a\s+)?(\w+)(?:\s+(?:value|signal|data))?/gi,
+      /(?:receive|get|obtain)\s+(?:a\s+)?(\w+)(?:\s+(?:value|signal|data))?/gi,
+      // Signal in quotes or specific format
+      /['"`](\w+)['"`]/gi,
+      // General patterns
+      /(\w+)\s+(?:signal|value|data)/gi,
+      // Specific automotive signals
+      /(temperature|pressure|speed|voltage|current|rpm|torque|position)/gi
     ];
     
     signalPatterns.forEach(pattern => {
       const matches = text.matchAll(pattern);
       for (const match of matches) {
         if (match[1] && match[1].length > 2) {
+          // Convert to proper case: first letter uppercase, rest lowercase
           const signalName = match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase();
-          if (!signals.includes(signalName)) {
+          if (!signals.includes(signalName) && !this.isCommonWord(signalName)) {
             signals.push(signalName);
           }
         }
@@ -291,29 +254,34 @@ export class RequirementParser {
     return signals;
   }
 
-  private static generatePorts(swcs: string[], interfaces: string[]): string[] {
+  private static isCommonWord(word: string): boolean {
+    const commonWords = ['shall', 'will', 'must', 'should', 'component', 'using', 'every', 'with', 'from', 'send', 'receive'];
+    return commonWords.includes(word.toLowerCase());
+  }
+
+  private static generatePortsWithSignalNaming(swcs: string[], signal: string): string[] {
     const ports: string[] = [];
     
-    if (swcs.length >= 2 && interfaces.length > 0) {
-      // Generate provided port for sender
-      const senderName = swcs[0].replace('_swc', '').replace('Controller', '');
-      ports.push(`${senderName}_ProvidedPort`);
+    if (swcs.length >= 2) {
+      // Generate P_<Signal> for sender (first SWC)
+      ports.push(`P_${signal}`);
       
-      // Generate required port for receiver
-      const receiverName = swcs[1].replace('_swc', '').replace('Controller', '');
-      ports.push(`${receiverName}_RequiredPort`);
+      // Generate R_<Signal> for receiver (second SWC)  
+      ports.push(`R_${signal}`);
+    } else if (swcs.length === 1) {
+      // If only one SWC, create both ports
+      ports.push(`P_${signal}`);
+      ports.push(`R_${signal}`);
     }
     
     return ports;
   }
 
-  private static generateRunnables(swcs: string[], timing?: RequirementDocument['timing']): string[] {
+  private static generateRunnablesWithTiming(swcs: string[], timing?: RequirementDocument['timing']): string[] {
     const runnables: string[] = [];
     
     swcs.forEach(swc => {
-      const baseName = swc.replace('_swc', '').replace('Controller', '');
-      
-      // Always generate init runnable
+      // Always generate init runnable: <swc>_init
       runnables.push(`${swc}_init`);
       
       // Generate timing-specific runnable
@@ -321,7 +289,8 @@ export class RequirementParser {
         const unit = timing.unit || 'ms';
         runnables.push(`${swc}_${timing.period}${unit}`);
       } else {
-        runnables.push(`${swc}_main`);
+        // Default to 10ms if no timing specified
+        runnables.push(`${swc}_10ms`);
       }
     });
     
