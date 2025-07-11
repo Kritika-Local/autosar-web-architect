@@ -20,6 +20,7 @@ import {
 import { RequirementParser, RequirementDocument } from '@/utils/requirementParser';
 import { AutosarGenerator } from '@/utils/autosarGenerator';
 import { useAutosarStore } from '@/store/autosarStore';
+import { v4 as uuidv4 } from 'uuid';
 
 interface FileProcessingState {
   isProcessing: boolean;
@@ -37,7 +38,7 @@ interface GenerationPreview {
 
 const RequirementImporter = () => {
   const { toast } = useToast();
-  const { currentProject, addSWC, addInterface, addPort, addRunnable, addAccessPoint, addDataElement } = useAutosarStore();
+  const store = useAutosarStore();
   
   // File processing state
   const [files, setFiles] = useState<File[]>([]);
@@ -91,7 +92,7 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
       return;
     }
 
-    if (!currentProject) {
+    if (!store.currentProject) {
       toast({
         title: "No Project",
         description: "Please create or load a project first.",
@@ -130,74 +131,11 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
       setProcessingState(prev => ({ ...prev, progress: 60, currentStep: 'Generating AUTOSAR artifacts...' }));
       const artifacts = AutosarGenerator.generateArtifacts(allRequirements);
       
-      // Step 4: Integrate artifacts directly using store methods
+      // Step 4: Integrate artifacts using the AutosarGenerator method
       setProcessingState(prev => ({ ...prev, progress: 80, currentStep: 'Integrating into project...' }));
       
-      // Add interfaces first
-      artifacts.interfaces.forEach(iface => {
-        addInterface({
-          id: iface.id,
-          name: iface.name,
-          type: iface.type,
-          dataElements: iface.dataElements.map(de => ({
-            id: de.id,
-            name: de.name,
-            type: de.type,
-            category: de.category
-          })),
-          description: iface.description || `Generated from requirements`
-        });
-      });
-
-      // Add SWCs
-      artifacts.swcs.forEach(swc => {
-        addSWC({
-          id: swc.id,
-          name: swc.name,
-          category: swc.category,
-          description: swc.description || `Generated from requirements`,
-          ports: [],
-          runnables: [],
-          accessPoints: []
-        });
-      });
-
-      // Add ports
-      artifacts.ports.forEach(port => {
-        addPort({
-          id: port.id,
-          name: port.name,
-          direction: port.direction,
-          interfaceRef: port.interfaceRef,
-          swcName: port.swcName,
-          description: port.description || `Generated from requirements`
-        });
-      });
-
-      // Add runnables
-      artifacts.runnables.forEach(runnable => {
-        addRunnable({
-          id: runnable.id,
-          name: runnable.name,
-          swcName: runnable.swcName,
-          runnableType: runnable.runnableType,
-          period: runnable.period,
-          description: runnable.description || `Generated from requirements`
-        });
-      });
-
-      // Add access points
-      artifacts.accessPoints.forEach(ap => {
-        addAccessPoint({
-          id: ap.id,
-          name: ap.name,
-          type: ap.type,
-          portRef: ap.portRef,
-          runnableRef: ap.runnableRef,
-          dataElementRef: ap.dataElementRef,
-          description: ap.description || `Generated from requirements`
-        });
-      });
+      // Use the existing integration method from AutosarGenerator
+      AutosarGenerator.integrateArtifactsIntoStore(artifacts, store);
 
       // Step 5: Force GUI refresh
       setProcessingState(prev => ({ ...prev, progress: 90, currentStep: 'Refreshing all views...' }));
@@ -255,7 +193,7 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
         setProcessingState(prev => ({ ...prev, isProcessing: false }));
       }
     }
-  }, [files, manualInput, toast, currentProject, addSWC, addInterface, addPort, addRunnable, addAccessPoint, addDataElement, processingState.error]);
+  }, [files, manualInput, toast, store, processingState.error]);
 
   const loadSampleData = useCallback(() => {
     setManualInput(sampleRequirements);
@@ -505,7 +443,7 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
       <div className="flex justify-center">
         <Button 
           onClick={processFiles} 
-          disabled={processingState.isProcessing || (files.length === 0 && !manualInput.trim()) || !currentProject}
+          disabled={processingState.isProcessing || (files.length === 0 && !manualInput.trim()) || !store.currentProject}
           size="lg"
         >
           <Play className="h-4 w-4 mr-2" />
