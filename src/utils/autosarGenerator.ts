@@ -1,4 +1,3 @@
-
 import { v4 as uuidv4 } from 'uuid';
 import { RequirementDocument } from './requirementParser';
 
@@ -204,49 +203,56 @@ export class AutosarGenerator {
     return artifacts;
   }
 
-  static integrateArtifactsIntoStore(artifacts: GeneratedArtifacts, store: any) {
+  static integrateArtifactsIntoStore(artifacts: GeneratedArtifacts, storeHook: any) {
     console.info('🚀 Starting enhanced artifacts integration with GUI synchronization...');
     
     try {
+      // Get the current project ID
+      const currentProjectId = storeHook.currentProject?.id || '';
+      
+      if (!currentProjectId) {
+        console.warn('⚠️ No current project found, using empty project ID');
+      }
+
       // Add interfaces first (they're referenced by ports)
       artifacts.interfaces.forEach(iface => {
-        store.getState().interfaces.push({
+        storeHook.interfaces.push({
           ...iface,
-          projectId: store.getState().currentProject?.id || ''
+          projectId: currentProjectId
         });
         console.info('✅ Created and linked Interface:', iface.name, 'with', iface.dataElements.length, 'data elements');
       });
 
       // Add SWCs
       artifacts.swcs.forEach(swc => {
-        store.getState().swcs.push({
+        storeHook.swcs.push({
           ...swc,
-          projectId: store.getState().currentProject?.id || ''
+          projectId: currentProjectId
         });
         console.info('✅ Created SWC container:', swc.name);
       });
 
       // Add ports
       artifacts.ports.forEach(port => {
-        store.getState().ports.push({
+        storeHook.ports.push({
           ...port,
-          projectId: store.getState().currentProject?.id || ''
+          projectId: currentProjectId
         });
       });
 
       // Add runnables
       artifacts.runnables.forEach(runnable => {
-        store.getState().runnables.push({
+        storeHook.runnables.push({
           ...runnable,
-          projectId: store.getState().currentProject?.id || ''
+          projectId: currentProjectId
         });
       });
 
       // Add access points
       artifacts.accessPoints.forEach(ap => {
-        store.getState().accessPoints.push({
+        storeHook.accessPoints.push({
           ...ap,
-          projectId: store.getState().currentProject?.id || ''
+          projectId: currentProjectId
         });
       });
 
@@ -261,20 +267,16 @@ export class AutosarGenerator {
             swcRef: swc.id,
             ecuRef: 'MainECU'
           })),
-          projectId: store.getState().currentProject?.id || ''
+          projectId: currentProjectId
         };
         
-        store.getState().ecuCompositions.push(ecuComposition);
+        storeHook.ecuCompositions.push(ecuComposition);
         console.info('✅ Created ECU Composition:', ecuComposition.name, 'with', ecuComposition.swcInstances.length, 'linked instances');
       }
 
-      // Force store update by calling the store's update method
       console.info('🔄 Forcing GUI synchronization across all menus...');
       
-      // Trigger store update
-      store.setState(store.getState());
-      
-      // Also dispatch custom event for additional GUI updates
+      // Dispatch custom event for additional GUI updates
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent('autosar-refresh'));
         console.info('✅ Project refresh triggered');
