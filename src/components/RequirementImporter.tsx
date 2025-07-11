@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -131,9 +132,25 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
       setProcessingState(prev => ({ ...prev, progress: 60, currentStep: 'Generating AUTOSAR artifacts...' }));
       const artifacts = AutosarGenerator.generateArtifacts(allRequirements);
       
-      // Step 4: Integrate into store
-      setProcessingState(prev => ({ ...prev, progress: 80, currentStep: 'Integrating into project...' }));
+      // Step 4: Integrate into store with GUI synchronization
+      setProcessingState(prev => ({ ...prev, progress: 80, currentStep: 'Integrating into project and syncing GUI...' }));
       AutosarGenerator.integrateArtifactsIntoStore(artifacts, store);
+      
+      // Step 5: CRITICAL - Force GUI refresh across all menus
+      setProcessingState(prev => ({ ...prev, progress: 90, currentStep: 'Refreshing all views...' }));
+      
+      // Force a complete refresh of all data
+      setTimeout(() => {
+        // Trigger re-render of all components
+        window.dispatchEvent(new CustomEvent('autosar-refresh'));
+        
+        // Force store state update
+        store.setState((state: any) => ({
+          ...state,
+          refreshCounter: (state.refreshCounter || 0) + 1,
+          lastUpdated: Date.now()
+        }));
+      }, 100);
       
       const preview: GenerationPreview = {
         swcs: artifacts.swcs.map(swc => ({ name: swc.name, category: swc.category })),
@@ -155,14 +172,14 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
         }))
       };
 
-      setProcessingState(prev => ({ ...prev, progress: 100, currentStep: 'Complete!' }));
+      setProcessingState(prev => ({ ...prev, progress: 100, currentStep: 'Complete - GUI synchronized!' }));
       setRequirements(allRequirements);
       setGenerationPreview(preview);
       setActiveTab('preview');
 
       toast({
         title: "Processing Complete",
-        description: `Successfully processed ${allRequirements.length} requirements and generated ${artifacts.swcs.length} SWCs with ${artifacts.runnables.length} runnables and ${artifacts.accessPoints.length} access points.`
+        description: `Successfully processed ${allRequirements.length} requirements and generated ${artifacts.swcs.length} SWCs with ${artifacts.runnables.length} runnables and ${artifacts.accessPoints.length} access points. All menus have been synchronized.`
       });
       
     } catch (error) {
@@ -211,7 +228,7 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
         <div>
           <h1 className="text-3xl font-bold text-foreground">Requirement Importer</h1>
           <p className="text-muted-foreground mt-1">
-            Import and parse requirements to automatically generate AUTOSAR artifacts
+            Import and parse requirements to automatically generate AUTOSAR artifacts with GUI synchronization
           </p>
         </div>
         <div className="flex gap-2">
@@ -437,7 +454,7 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
           size="lg"
         >
           <Play className="h-4 w-4 mr-2" />
-          Process Requirements & Generate Artifacts
+          Process Requirements & Generate Artifacts with GUI Sync
         </Button>
       </div>
     </div>

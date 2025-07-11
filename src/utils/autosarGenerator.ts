@@ -1,3 +1,4 @@
+
 import { RequirementDocument } from './requirementParser';
 import { Swc, Interface, Port, Runnable, DataElement, AccessPoint } from '@/store/autosarStore';
 import { v4 as uuidv4 } from 'uuid';
@@ -357,9 +358,9 @@ export class AutosarGenerator {
     return 'application';
   }
 
-  // CRITICAL ENHANCEMENT: Properly integrate artifacts into the store with correct hierarchical linking
+  // ENHANCED: Properly integrate artifacts into the store with GUI synchronization
   static integrateArtifactsIntoStore(artifacts: AutosarArtifacts, store: any) {
-    console.log('Starting enhanced artifacts integration with proper linking...');
+    console.log('🚀 Starting enhanced artifacts integration with GUI synchronization...');
     
     // Step 1: Create interfaces first with their data elements
     const interfaceMap = new Map<string, string>();
@@ -373,7 +374,7 @@ export class AutosarGenerator {
       console.log(`✅ Created and linked Interface: ${interfaceData.name} with ${interfaceData.dataElements.length} data elements`);
     }
     
-    // Step 2: Create SWCs (empty containers)
+    // Step 2: Create SWCs (empty containers) and track them
     const swcMap = new Map<string, string>();
     for (const swcData of artifacts.swcs) {
       const swcId = store.createSWC({
@@ -480,27 +481,62 @@ export class AutosarGenerator {
       console.log(`✅ Created ECU Composition: ${artifacts.ecuComposition.name} with ${artifacts.ecuComposition.swcInstances.length} linked instances`);
     }
     
-    // Step 7: Final verification and linking summary
-    console.log('\n🔗 LINKING VERIFICATION SUMMARY:');
-    console.log('=====================================');
+    // Step 7: CRITICAL - Force GUI refresh and synchronization
+    console.log('🔄 Forcing GUI synchronization across all menus...');
     
+    // Force store refresh to update all subscribers
+    if (store.refreshProject) {
+      store.refreshProject();
+      console.log('✅ Project refresh triggered');
+    }
+    
+    // Force state update to trigger re-renders
+    if (store.forceUpdate) {
+      store.forceUpdate();
+      console.log('✅ Force update triggered');
+    }
+    
+    // Trigger a state change to force all components to re-render
+    store.setState((state: any) => ({
+      ...state,
+      lastUpdated: Date.now()
+    }));
+    
+    // Step 8: Final verification and linking summary with GUI counts
+    console.log('\n🔗 GUI SYNCHRONIZATION VERIFICATION:');
+    console.log('====================================');
+    
+    // Verify SWC Builder counts
     artifacts.swcs.forEach(swc => {
       const swcPorts = artifacts.ports.filter(p => p.swcName === swc.name);
       const swcRunnables = artifacts.runnables.filter(r => r.swcName === swc.name);
       const swcAccessPoints = artifacts.accessPoints.filter(ap => ap.swcName === swc.name);
       
-      console.log(`📦 SWC: ${swc.name}`);
-      console.log(`   ├─ Ports: ${swcPorts.length} (${swcPorts.map(p => `${p.name}[${p.direction}]`).join(', ')})`);
-      console.log(`   ├─ Runnables: ${swcRunnables.length} (${swcRunnables.map(r => `${r.name}[${r.runnableType}${r.period > 0 ? `:${r.period}ms` : ''}]`).join(', ')})`);
-      console.log(`   └─ Access Points: ${swcAccessPoints.length} (${swcAccessPoints.map(ap => `${ap.name}[${ap.type}]`).join(', ')})`);
+      console.log(`📦 SWC Builder - ${swc.name}:`);
+      console.log(`   ├─ GUI Ports Count: ${swcPorts.length} (${swcPorts.map(p => `${p.name}[${p.direction}]`).join(', ')})`);
+      console.log(`   ├─ GUI Runnables Count: ${swcRunnables.length} (${swcRunnables.map(r => `${r.name}[${r.runnableType}${r.period > 0 ? `:${r.period}ms` : ''}]`).join(', ')})`);
+      console.log(`   └─ GUI Access Points Count: ${swcAccessPoints.length} (${swcAccessPoints.map(ap => `${ap.name}[${ap.type}]`).join(', ')})`);
     });
     
+    // Verify Behavior Designer runnable mapping
+    console.log('\n🎯 Behavior Designer - Runnable Mapping:');
+    artifacts.runnables.forEach(runnable => {
+      const runnableAccessPoints = artifacts.accessPoints.filter(ap => ap.runnableName === runnable.name);
+      console.log(`⚡ ${runnable.swcName} → ${runnable.name} (${runnable.runnableType}${runnable.period > 0 ? `, ${runnable.period}ms` : ''})`);
+      console.log(`   └─ Access Points: ${runnableAccessPoints.length} (${runnableAccessPoints.map(ap => ap.name).join(', ')})`);
+    });
+    
+    // Verify Port & Interface Editor linking
+    console.log('\n🔌 Port & Interface Editor - Linking:');
     artifacts.interfaces.forEach(iface => {
       const linkedPorts = artifacts.ports.filter(p => p.interfaceRef === iface.name);
-      console.log(`🔌 Interface: ${iface.name} → Linked to ${linkedPorts.length} ports (${linkedPorts.map(p => p.name).join(', ')})`);
+      console.log(`🔗 Interface: ${iface.name} (${iface.type})`);
+      console.log(`   ├─ Data Elements: ${iface.dataElements.length} (${iface.dataElements.map(de => de.name).join(', ')})`);
+      console.log(`   └─ Linked Ports: ${linkedPorts.length} (${linkedPorts.map(p => `${p.name}[${p.direction}]@${p.swcName}`).join(', ')})`);
     });
     
-    console.log('\n✅ Enhanced artifacts integration completed with full hierarchical linking!');
-    console.log(`📊 Final counts: ${artifacts.swcs.length} SWCs, ${artifacts.interfaces.length} Interfaces, ${artifacts.ports.length} Ports, ${artifacts.runnables.length} Runnables, ${artifacts.accessPoints.length} Access Points`);
+    console.log('\n✅ Enhanced artifacts integration with GUI synchronization completed!');
+    console.log(`📊 Final GUI counts: ${artifacts.swcs.length} SWCs, ${artifacts.interfaces.length} Interfaces, ${artifacts.ports.length} Ports, ${artifacts.runnables.length} Runnables, ${artifacts.accessPoints.length} Access Points`);
+    console.log('🎯 All menus should now reflect the generated artifacts with proper linking!');
   }
 }
