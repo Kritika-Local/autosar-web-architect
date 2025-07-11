@@ -1,5 +1,3 @@
-
-
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import { persist } from 'zustand/middleware';
@@ -895,7 +893,7 @@ ${(swc.runnables || []).map(runnable => {
     }
   }
   
-  // Generate DATA-RECEIVE-POINT-BY-ARGUMENT section for read access points
+  // Generate DATA-RECEIVE-POINT-BY-ARGUMENTS section for read access points (schema-compliant)
   let dataReceivePointsContent = '';
   if (readAccessPoints.length > 0) {
     dataReceivePointsContent = readAccessPoints.map(ap => {
@@ -940,9 +938,9 @@ ${(swc.runnables || []).map(runnable => {
 ${dataSendPointsContent ? `                  <DATA-SEND-POINTS>
 ${dataSendPointsContent}
                   </DATA-SEND-POINTS>` : ''}
-${dataReceivePointsContent ? `                  <DATA-RECEIVE-POINT-BY-ARGUMENT>
+${dataReceivePointsContent ? `                  <DATA-RECEIVE-POINT-BY-ARGUMENTS>
 ${dataReceivePointsContent}
-                  </DATA-RECEIVE-POINT-BY-ARGUMENT>` : ''}
+                  </DATA-RECEIVE-POINT-BY-ARGUMENTS>` : ''}
 ${callAccessPoints.length > 0 ? `                  <SERVER-CALL-POINTS>
 ${callAccessPoints.map(ap => {
   const callUUID = generateUUID();
@@ -1224,4 +1222,3 @@ ${project.swcs.map(swc => {
     }
   )
 );
-
