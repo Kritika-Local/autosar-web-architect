@@ -142,13 +142,6 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
       setTimeout(() => {
         // Trigger re-render of all components
         window.dispatchEvent(new CustomEvent('autosar-refresh'));
-        
-        // Force store state update
-        store.setState((state: any) => ({
-          ...state,
-          refreshCounter: (state.refreshCounter || 0) + 1,
-          lastUpdated: Date.now()
-        }));
       }, 100);
       
       const preview: GenerationPreview = {
