@@ -131,19 +131,12 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
       setProcessingState(prev => ({ ...prev, progress: 60, currentStep: 'Generating AUTOSAR artifacts...' }));
       const artifacts = AutosarGenerator.generateArtifacts(allRequirements);
       
-      // Step 4: Integrate artifacts using the AutosarGenerator method
+      // Step 4: Integrate artifacts
       setProcessingState(prev => ({ ...prev, progress: 80, currentStep: 'Integrating into project...' }));
-      
-      // Use the existing integration method from AutosarGenerator
       AutosarGenerator.integrateArtifactsIntoStore(artifacts, store);
 
-      // Step 5: Force GUI refresh
-      setProcessingState(prev => ({ ...prev, progress: 90, currentStep: 'Refreshing all views...' }));
-      
-      // Force a complete refresh of all data using custom event
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('autosar-refresh'));
-      }, 100);
+      // Step 5: Create preview by looking up SWC names from the store
+      setProcessingState(prev => ({ ...prev, progress: 90, currentStep: 'Creating preview...' }));
       
       const preview: GenerationPreview = {
         swcs: artifacts.swcs.map(swc => ({ name: swc.name, category: swc.category })),
@@ -152,20 +145,33 @@ FuelCommand interface shall contain FuelAmount (uint32) and InjectionTiming (uin
           type: iface.type, 
           dataElements: iface.dataElements.length 
         })),
-        ports: artifacts.ports.map(port => ({ 
-          name: port.name, 
-          direction: port.direction, 
-          swcName: port.swcName 
-        })),
-        runnables: artifacts.runnables.map(runnable => ({ 
-          name: runnable.name, 
-          period: runnable.period, 
-          type: runnable.runnableType, 
-          swcName: runnable.swcName 
-        }))
+        ports: artifacts.ports.map(port => {
+          const swc = artifacts.swcs.find(s => s.id === port.swcRef);
+          return { 
+            name: port.name, 
+            direction: port.direction, 
+            swcName: swc?.name || 'Unknown SWC'
+          };
+        }),
+        runnables: artifacts.runnables.map(runnable => {
+          const swc = artifacts.swcs.find(s => s.id === runnable.swcRef);
+          return { 
+            name: runnable.name, 
+            period: runnable.period || 0, 
+            type: runnable.runnableType, 
+            swcName: swc?.name || 'Unknown SWC'
+          };
+        })
       };
 
+      // Step 6: Force GUI refresh
       setProcessingState(prev => ({ ...prev, progress: 100, currentStep: 'Complete!' }));
+      
+      // Force a complete refresh of all data using custom event
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('autosar-refresh'));
+      }, 100);
+
       setRequirements(allRequirements);
       setGenerationPreview(preview);
       setActiveTab('preview');
