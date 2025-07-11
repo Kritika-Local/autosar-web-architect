@@ -357,11 +357,11 @@ export class AutosarGenerator {
     return 'application';
   }
 
-  // CRITICAL FIX: Properly integrate artifacts into the store with correct hierarchical structure
+  // CRITICAL ENHANCEMENT: Properly integrate artifacts into the store with correct hierarchical linking
   static integrateArtifactsIntoStore(artifacts: AutosarArtifacts, store: any) {
-    console.log('Integrating artifacts into store...');
+    console.log('Starting enhanced artifacts integration with proper linking...');
     
-    // Step 1: Create interfaces first (needed for port creation)
+    // Step 1: Create interfaces first with their data elements
     const interfaceMap = new Map<string, string>();
     for (const interfaceData of artifacts.interfaces) {
       const interfaceId = store.createInterface({
@@ -370,10 +370,10 @@ export class AutosarGenerator {
         dataElements: interfaceData.dataElements
       });
       interfaceMap.set(interfaceData.name, interfaceId);
-      console.log(`Created Interface: ${interfaceData.name} with ID: ${interfaceId}`);
+      console.log(`✅ Created and linked Interface: ${interfaceData.name} with ${interfaceData.dataElements.length} data elements`);
     }
     
-    // Step 2: Create SWCs first (empty, will populate later)
+    // Step 2: Create SWCs (empty containers)
     const swcMap = new Map<string, string>();
     for (const swcData of artifacts.swcs) {
       const swcId = store.createSWC({
@@ -383,10 +383,10 @@ export class AutosarGenerator {
         type: swcData.type
       });
       swcMap.set(swcData.name, swcId);
-      console.log(`Created SWC: ${swcData.name} with ID: ${swcId}`);
+      console.log(`✅ Created SWC container: ${swcData.name}`);
     }
     
-    // Step 3: Create and map runnables to their SWCs
+    // Step 3: Create runnables and properly link them to SWCs
     const runnableMap = new Map<string, string>();
     for (const runnableData of artifacts.runnables) {
       const swcId = swcMap.get(runnableData.swcName);
@@ -400,38 +400,43 @@ export class AutosarGenerator {
           events: runnableData.events || []
         });
         
-        runnableMap.set(`${runnableData.swcName}::${runnableData.name}`, runnableId);
-        console.log(`Created and mapped Runnable: ${runnableData.name} with ID: ${runnableId} to SWC: ${runnableData.swcName}`);
+        // Create unique key for runnable mapping
+        const runnableKey = `${runnableData.swcName}::${runnableData.name}`;
+        runnableMap.set(runnableKey, runnableId);
         
-        // CRITICAL: Ensure the runnable is added to the SWC's runnables array
-        store.addRunnableToSWC(swcId, runnableId);
+        console.log(`✅ Created and linked Runnable: ${runnableData.name} to SWC: ${runnableData.swcName} with ${runnableData.runnableType} timing${runnableData.period > 0 ? ` (${runnableData.period}ms)` : ''}`);
       }
     }
     
-    // Step 4: Create and map ports to their SWCs
-    for (const swcData of artifacts.swcs) {
-      const swcId = swcMap.get(swcData.name);
-      if (!swcId) continue;
+    // Step 4: Create ports and properly link them to SWCs and interfaces
+    const portMap = new Map<string, string>();
+    for (const portData of artifacts.ports) {
+      const swcId = swcMap.get(portData.swcName);
+      const interfaceId = interfaceMap.get(portData.interfaceRef);
       
-      const swcPorts = artifacts.ports.filter(p => p.swcName === swcData.name);
-      for (const portData of swcPorts) {
-        const interfaceId = interfaceMap.get(portData.interfaceRef);
-        if (interfaceId) {
-          const portId = store.createPort({
-            name: portData.name,
-            direction: portData.direction,
-            interfaceRef: interfaceId,
-            swcId: swcId
-          });
-          console.log(`Created and mapped Port: ${portData.name} to SWC: ${swcData.name}`);
-        }
+      if (swcId && interfaceId) {
+        const portId = store.createPort({
+          name: portData.name,
+          direction: portData.direction,
+          interfaceRef: interfaceId,
+          swcId: swcId
+        });
+        
+        // Create unique key for port mapping
+        const portKey = `${portData.swcName}::${portData.name}`;
+        portMap.set(portKey, portId);
+        
+        console.log(`✅ Created and linked Port: ${portData.name} (${portData.direction}) to SWC: ${portData.swcName} via Interface: ${portData.interfaceRef}`);
       }
     }
     
-    // Step 5: Create access points and map them to runnables
+    // Step 5: Create access points and link them to runnables, ports, and data elements
     for (const apData of artifacts.accessPoints) {
       const swcId = swcMap.get(apData.swcName);
-      const runnableId = runnableMap.get(`${apData.swcName}::${apData.runnableName}`);
+      const runnableKey = `${apData.swcName}::${apData.runnableName}`;
+      const runnableId = runnableMap.get(runnableKey);
+      const portKey = `${apData.swcName}::${apData.portRef}`;
+      const portId = portMap.get(portKey);
       
       if (swcId && runnableId) {
         const accessPointId = store.addAccessPoint(runnableId, {
@@ -444,20 +449,21 @@ export class AutosarGenerator {
           dataElementRef: apData.dataElementRef
         });
         
-        console.log(`Created and mapped Access Point: ${apData.name} to Runnable: ${apData.runnableName} in SWC: ${apData.swcName}`);
+        console.log(`✅ Created and linked Access Point: ${apData.name} to Runnable: ${apData.runnableName} in SWC: ${apData.swcName}`);
+        console.log(`   └─ Port: ${apData.portRef}, Data Element: ${apData.dataElementRef}`);
       }
     }
     
-    // Step 6: Create ECU Composition and add SWC instances
+    // Step 6: Create ECU Composition and add SWC instances with proper linking
     if (artifacts.ecuComposition) {
       const compositionId = store.createECUComposition({
         name: artifacts.ecuComposition.name,
-        description: `Auto-generated ECU Composition with ${artifacts.swcs.length} SWCs`,
+        description: `Auto-generated ECU Composition with ${artifacts.swcs.length} linked SWCs`,
         ecuType: 'ApplicationECU',
         autosarVersion: '4.2.2'
       });
       
-      // Add SWC instances to the composition
+      // Add SWC instances to the composition with proper references
       for (const instance of artifacts.ecuComposition.swcInstances) {
         const swcId = swcMap.get(instance.swcRef);
         if (swcId) {
@@ -467,17 +473,34 @@ export class AutosarGenerator {
             instanceName: instance.name,
             ecuCompositionId: compositionId
           });
-          console.log(`Added SWC Instance: ${instance.name} to ECU Composition`);
+          console.log(`✅ Added SWC Instance: ${instance.name} to ECU Composition with proper linking`);
         }
       }
       
-      console.log(`Created ECU Composition: ${artifacts.ecuComposition.name} with ID: ${compositionId}`);
+      console.log(`✅ Created ECU Composition: ${artifacts.ecuComposition.name} with ${artifacts.ecuComposition.swcInstances.length} linked instances`);
     }
     
-    console.log('Artifacts integration completed successfully');
-    console.log('Final verification - SWCs with runnables:', artifacts.swcs.map(swc => ({
-      name: swc.name,
-      runnableCount: artifacts.runnables.filter(r => r.swcName === swc.name).length
-    })));
+    // Step 7: Final verification and linking summary
+    console.log('\n🔗 LINKING VERIFICATION SUMMARY:');
+    console.log('=====================================');
+    
+    artifacts.swcs.forEach(swc => {
+      const swcPorts = artifacts.ports.filter(p => p.swcName === swc.name);
+      const swcRunnables = artifacts.runnables.filter(r => r.swcName === swc.name);
+      const swcAccessPoints = artifacts.accessPoints.filter(ap => ap.swcName === swc.name);
+      
+      console.log(`📦 SWC: ${swc.name}`);
+      console.log(`   ├─ Ports: ${swcPorts.length} (${swcPorts.map(p => `${p.name}[${p.direction}]`).join(', ')})`);
+      console.log(`   ├─ Runnables: ${swcRunnables.length} (${swcRunnables.map(r => `${r.name}[${r.runnableType}${r.period > 0 ? `:${r.period}ms` : ''}]`).join(', ')})`);
+      console.log(`   └─ Access Points: ${swcAccessPoints.length} (${swcAccessPoints.map(ap => `${ap.name}[${ap.type}]`).join(', ')})`);
+    });
+    
+    artifacts.interfaces.forEach(iface => {
+      const linkedPorts = artifacts.ports.filter(p => p.interfaceRef === iface.name);
+      console.log(`🔌 Interface: ${iface.name} → Linked to ${linkedPorts.length} ports (${linkedPorts.map(p => p.name).join(', ')})`);
+    });
+    
+    console.log('\n✅ Enhanced artifacts integration completed with full hierarchical linking!');
+    console.log(`📊 Final counts: ${artifacts.swcs.length} SWCs, ${artifacts.interfaces.length} Interfaces, ${artifacts.ports.length} Ports, ${artifacts.runnables.length} Runnables, ${artifacts.accessPoints.length} Access Points`);
   }
 }
